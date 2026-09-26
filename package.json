@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Local personal assistant with Digital Noir aesthetic - Electron + React + Three.js",
   "main": "./src/main/main.ts",
-
   "author": "m00nk0d3",
   "license": "MIT",
   "type": "module",
@@ -17,27 +16,32 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ricky0123/vad-web": "^1.0.5"
+    "@ricky0123/vad-web": "^0.0.31"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.0",
-    "@electron-toolkit/tsconfig": "^1.0.2",
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@react-three/fiber": "^8.17.1",
     "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^8.70.1",
     "@vitejs/plugin-react": "^4.3.3",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "eslint": "^8.57.0",
     "three": "^0.169.0",
-    "@react-three/fiber": "^8.17.1",
-    "typescript": "~5.6.2",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1"
+    "typescript": "~5.6.2"
   },
   "build": {
     "appId": "com.spectre.app",
     "productName": "SPECTRE",
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "AudioVideo"
     }
   }
