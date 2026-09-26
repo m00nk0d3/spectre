@@ -13,5 +13,4 @@
     "dist/**/*",
     "package.json"
   ]
-  // Note: electron-vite automatically sets main field in package.json to built entry point
 }

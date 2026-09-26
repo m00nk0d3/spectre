@@ -1,7 +1,7 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useRef, useEffect } from "react";
-import "../../../src/styles/index.css";
+import "../styles/index.css";
 
 declare global {
   interface Window {
