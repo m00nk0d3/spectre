@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect } from "react";
 import "../../../src/styles/index.css";
 
 declare global {
@@ -16,20 +16,10 @@ declare global {
 function ShaderOrb({ amplitude }: { amplitude: number }) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const noiseTimeRef = useRef(Date.now());
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
 
-  useFrame(({ clock }) => {
-    const time = clock.elapsedTime;
-    noiseTimeRef.current = Date.now() / 1000;
-
-    if (meshRef.current) {
-      meshRef.current.scale.setScalar(1.2 + amplitude * Math.sin(time * 8));
-    } else {
-      // Handle case where mesh is not yet initialized
-    }
-  });
-
-  const material = useMemo(() => {
-    return new THREE.ShaderMaterial({
+  useEffect(() => {
+    const material = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
         amplitude: { value: amplitude },
@@ -71,18 +61,32 @@ function ShaderOrb({ amplitude }: { amplitude: number }) {
         }
       `,
     });
+
+    materialRef.current = material;
+
+    return () => {
+      if (materialRef.current) {
+        materialRef.current.dispose();
+        materialRef.current = null;
+      }
+    };
   }, [amplitude]);
 
-  useEffect(() => {
-    return () => {
-      material.dispose();
-    };
-  }, [material]);
+  useFrame(({ clock }) => {
+    const time = clock.elapsedTime;
+    noiseTimeRef.current = Date.now() / 1000;
+
+    if (meshRef.current && materialRef.current) {
+      meshRef.current.scale.setScalar(1.2 + amplitude * Math.sin(time * 8));
+      materialRef.current.uniforms.time.value = time;
+      materialRef.current.uniforms.noiseTime.value = noiseTimeRef.current;
+    }
+  });
 
   return (
     <mesh ref={meshRef} scale={[1.8, 1.8, 1.8]}>
       <sphereGeometry args={[1, 64, 64]} />
-      <primitive object={material} attach="material" />
+      <primitive object={materialRef.current} attach="material" />
     </mesh>
   );
 }

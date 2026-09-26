@@ -18,7 +18,6 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo.json"
   },

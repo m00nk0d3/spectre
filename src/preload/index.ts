@@ -4,5 +4,5 @@ import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("electron", {
   notifySpeechStart: () => ipcRenderer.invoke("speech-start"),
   notifySpeechEnd: () => ipcRenderer.invoke("speech-end"),
-  getTTSAudio: (text: string) => ipcRenderer.invoke("get-tts-audio", text),
+  getTTSAudio: (text: string): Promise<Buffer> => ipcRenderer.invoke("get-tts-audio", text),
 });
