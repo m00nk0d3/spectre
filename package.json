@@ -17,8 +17,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ricky0123/vad-web": "^1.0.5",
-    "openai": "^4.72.0"
+    "@ricky0123/vad-web": "^1.0.5"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.0",

@@ -2,7 +2,7 @@
   "extends": "@electron-toolkit/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "skipLibCheck": true,
     "strict": true,

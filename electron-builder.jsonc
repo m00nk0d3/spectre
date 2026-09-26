@@ -12,8 +12,6 @@
   "files": [
     "dist/**/*",
     "package.json"
-  ],
-  "extraMetadata": {
-    "main": "dist/main/main.cjs"
-  }
+  ]
+  // Note: electron-vite automatically sets main field in package.json to built entry point
 }

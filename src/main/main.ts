@@ -40,7 +40,7 @@ app.whenReady().then(() => {
     return true;
   });
 
-  ipcMain.handle("get-tts-audio", async (event, text: string) => {
+  ipcMain.handle("get-tts-audio", async (_event, text: string) => {
     try {
       console.log("[SPECTRE] TTS request for:", text.substring(0, 50) + "...");
 
