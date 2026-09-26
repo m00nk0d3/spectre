@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain } from "electron";
+import path from "path";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -13,7 +14,7 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     webPreferences: {
-      preload: undefined,
+      preload: path.join(__dirname, "../preload/index"),
       contextIsolation: true,
       nodeIntegration: false,
     },
