@@ -2,7 +2,7 @@
   "name": "spectre",
   "version": "1.0.0",
   "type": "module",
-  "description": "Local personal assistant - Digital Noir floating orb",
+  "description":"Local personal assistant - Digital Noir floating orb",
   "main": "dist/main.js",
   "scripts": {
     "init": "tsx watch src/index.ts",
