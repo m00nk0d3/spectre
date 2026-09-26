@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 
+const WINDOW_MANAGER_CLASS = process.env.WINDOW_MANAGER_CLASS || "spectre";
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
@@ -19,6 +21,9 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+
+  // Hyprland window manager integration class name
+  (mainWindow as any).windowClassName = WINDOW_MANAGER_CLASS;
 
   mainWindow.loadFile("./index.html");
 }

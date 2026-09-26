@@ -19,9 +19,6 @@ export default defineConfig(({ mode }) => {
         localsConvention: "camelCase",
       },
     },
-    server: {
-      port: 5173,
-      host: true,
-    },
+
   };
 });

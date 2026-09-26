@@ -18,7 +18,8 @@
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint . --ext ts,tsx",
     "type-check": "tsc --noEmit",
-    "test": "npm run type-check"
+    "test": "vitest run",
+    "validate-hyprland": "node scripts/validate-hyprland.ts"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.31"
@@ -39,6 +40,7 @@
     "react-dom": "^18.3.1",
     "three": "^0.169.0",
     "typescript": "~5.6.2",
-    "vite": "^5.4.21"
+    "vite": "^5.4.21",
+    "vitest": "^3.0.6"
   }
 }
