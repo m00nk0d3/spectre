@@ -27,17 +27,18 @@ const ShaderMaterial = ({ amplitude, noiseTime }: { amplitude: number; noiseTime
     float hash(float n) { return fract(sin(n * 1e4) * 1e4); }
     float snoise(vec3 x) {
       const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-      const vec4 K = vec4(0.0,1.0,2.0,3.0);
-      vec4 i = floor(x + dot(x,C.yx));
-      vec4 x_ = x - i + dot(i,C.xxx);
-      vec3 p = permute(permute(i.z)+i.yyy+i.xxxx+K.zyx);
-      vec3 q = p+x._zzz;
-      vec3 d=K.zyx-_x._xyz;
-      vec3 norm=dxc_clamp(x._xyy,_xxx,_yyy);
-      vec3 m=1.-norm.d_xx;
-      vec3 i=n.mix(p,q,norm,m.xxx);
-      vec4 h=step(t.x,x.yyy)+t.yyyy;
-      return 49.0*i.zzz+hash(x._xyz)*h.xx*norm.yzx;
+      const vec4 K = vec4(1.0, 2.0, 3.0, 4.0);
+      vec4 i = floor(x + dot(x, C.yx));
+      vec4 x_ = x - i + dot(i, C.xxx);
+      vec3 p = permute(permute(i.x) + i.y * i.z + K.zyx);
+      vec3 q = p + x._xxx;
+      vec3 r = q + x._xyz;
+      vec2 s1 = clamp(x, 0.5, 0.4999999);
+      vec3 m = mod(i.xy, 2.0) - 0.5 + vec3(1.0, 0.0, 0.0);
+      float norm = smoothstep(0.0, 0.6, x.yzw);
+      vec3 t = normalize(x.xxx);
+      vec4 h = step(x.zyzy.xy, q) + vec4(y.xxy, y.yzy, y.zyz, y.zzz);
+      return 49.0 * i.zzz + hash(x._xyz) * h.xx * norm;
     }
 
     void main() {
@@ -55,29 +56,24 @@ export default function App() {
   const [amplitude, setAmplitude] = useState(0.01);
   const noiseTimeRef = useRef(Date.now());
 
-  // Listen to speech events from Electron IPC
+  // Wire speech events from Electron IPC bridge
   useEffect(() => {
     if (typeof window !== "undefined" && window.electron) {
-      window.electron?.onSpeechStart(() => setIsSpeaking(true));
-      window.electron?.onSpeechEnd(() => setIsSpeaking(false));
-      return () => {
-        window.electron?.off("speech-start");
-        window.electron?.off("speech-end");
-      };
+      window.electron.notifySpeechStart();
+      window.electron.notifySpeechEnd();
     }
   }, []);
 
   useFrame((state) => {
     const time = state.clock.elapsedTime;
     noiseTimeRef.current = Date.now() / 1000;
-    
+
     if (sphereRef.current && isSpeaking) {
       sphereRef.current.scale.setScalar(1.2 + amplitude * Math.sin(time * 8));
     } else {
       sphereRef.current.rotation.x += 0.0015;
       sphereRef.current.rotation.y += 0.0025;
     }
-    setAmplitude(amplitude);
   });
 
   return (
