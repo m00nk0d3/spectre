@@ -13,7 +13,7 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     webPreferences: {
-      preload: "/home/m00nk0d3/dev/spectre/.sandcastle/worktrees/agent-1-1-inicializar-template-react-6/src/preload/index.ts",
+      preload: "./src/preload/index.ts",
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -41,9 +41,39 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("get-tts-audio", async (event, text: string) => {
-    // TODO: Implement OpenAI TTS synthesis here
-    console.log("[SPECTRE] TTS request for:", text.substring(0, 50) + "...");
-    return null;
+    try {
+      console.log("[SPECTRE] TTS request for:", text.substring(0, 50) + "...");
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch("http://localhost:1234/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.LM_STUDIO_API_KEY || ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "tts-1",
+          input: text,
+          voice: "alloy",
+          response_format: "mp3"
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`TTS API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const audioBuffer = await response.arrayBuffer();
+      return audioBuffer;
+    } catch (error: any) {
+      console.error("[SPECTRE] TTS synthesis failed:", error.message);
+      return null;
+    }
   });
 });
 

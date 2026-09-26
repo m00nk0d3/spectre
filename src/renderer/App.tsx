@@ -37,7 +37,7 @@ const ShaderMaterial = ({ amplitude, noiseTime }: { amplitude: number; noiseTime
       vec3 m = mod(i.xy, 2.0) - 0.5 + vec3(1.0, 0.0, 0.0);
       float norm = smoothstep(0.0, 0.6, x.yzw);
       vec3 t = normalize(x.xxx);
-      vec4 h = step(x.zyzy.xy, q) + vec4(y.xxy, y.yzy, y.zyz, y.zzz);
+      vec4 h = step(x.zyzy.xy, q) + vec4(t.xxy, t.yzy, t.zyz, t.zzz);
       return 49.0 * i.zzz + hash(x._xyz) * h.xx * norm;
     }
 

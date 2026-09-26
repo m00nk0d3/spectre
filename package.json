@@ -2,7 +2,8 @@
   "name": "spectre",
   "version": "1.0.0",
   "description": "Local personal assistant with Digital Noir aesthetic - Electron + React + Three.js",
-  
+  "main": "./src/main/main.ts",
+
   "author": "m00nk0d3",
   "license": "MIT",
   "type": "module",
