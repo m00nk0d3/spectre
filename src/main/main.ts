@@ -20,7 +20,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile("./src/renderer/index.html");
+  mainWindow.loadFile("./index.html");
 }
 
 app.whenReady().then(() => {
