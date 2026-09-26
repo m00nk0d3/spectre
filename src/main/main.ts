@@ -1,9 +1,12 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
+import { spawn } from "child_process";
 
 const WINDOW_MANAGER_CLASS = process.env.WINDOW_MANAGER_CLASS || "spectre";
 
 let mainWindow: BrowserWindow | null = null;
+let pythonProcess: any = null;
+let pythonPid: number | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -28,14 +31,102 @@ function createWindow() {
   mainWindow.loadFile("./index.html");
 }
 
-app.whenReady().then(() => {
+async function spawnPythonServerLogic(): Promise<{ pid: number; ready: boolean }> {
+  const PYTHON_CMD = process.env.PYTHON_CMD || "python3";
+  const PYTHON_PATH = process.env.KOKORO_MODEL_PATH || "";
+
+  const pythonProcess = spawn(
+    PYTHON_CMD,
+    ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "1234"],
+    {
+      cwd: __dirname,
+      stdio: ["ignore", "pipe", "inherit"], // capture stdout for GPU confirmation
+      env: { ...process.env, KOKORO_MODEL_PATH: PYTHON_PATH },
+    }
+  );
+
+  pythonProcess.on("error", (err) => {
+    console.error("[PYTHON-SERVER] Failed to spawn:", err.message);
+  });
+
+  let ready = false;
+  const stdoutLines: string[] = [];
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  // Collect all stdout and check for GPU marker
+  pythonProcess.stdout.on("data", (chunk: Buffer) => {
+    const text = String(chunk).trim();
+    console.log(`[PYTHON-SERVER] ${text}`);
+    stdoutLines.push(text);
+    if (text.toLowerCase().includes("gpu") || text.toLowerCase().includes("kokoro")) {
+      ready = true;
+      // Clear timeout on success
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  });
+
+  pythonProcess.stdout.on("close", () => {
+    // Final check if process exited without seeing GPU marker
+    if (!ready) {
+      const lastLine = stdoutLines[stdoutLines.length - 1] || "";
+      if (lastLine.toLowerCase().includes("gpu") || lastLine.toLowerCase().includes("kokoro")) {
+        ready = true;
+      } else {
+        console.error("[PYTHON-SERVER] Process exited without GPU confirmation");
+      }
+    }
+
+    // Clear timeout on exit
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+
+  const TIMEOUT_MS = 30000; // 30s timeout waiting for GPU marker
+  return new Promise((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      console.error("[PYTHON-SERVER] Timeout waiting for GPU model load");
+      resolve({ pid: pythonProcess.pid || 0, ready: false });
+    }, TIMEOUT_MS);
+
+    // Handle process exit
+    pythonProcess.on("close", (code) => {
+      if (code !== null && code !== 0) {
+        console.error(`[PYTHON-SERVER] Process exited with code ${code}`);
+        reject(new Error(`Python server exited with code ${code}`));
+      } else if (!ready) {
+        // Exit with code 0 but no GPU marker - check if process completed successfully
+        console.log("[PYTHON-SERVER] Process completed, checking final state");
+        resolve({ pid: pythonProcess.pid || 0, ready });
+      }
+    });
+
+    pythonProcess.on("error", reject);
+  });
+}
+
+let serverResult: { pid: number; ready: boolean } | null = null;
+
+app.whenReady().then(async () => {
   createWindow();
+
+  try {
+    const result = await spawnPythonServerLogic();
+    pythonPid = result.pid;
+    serverResult = result; // Store for IPC access
+
+    if (!result.ready) {
+      throw new Error("Python server failed to load GPU model within timeout");
+    }
+
+    console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pythonPid}`);
+  } catch (err) {
+    console.error("[PYTHON-SERVER] Failed to start:", err);
+    throw err; // Fail app startup gracefully
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) app.quit();
   });
 
-  // IPC handlers for speech events from renderer VAD
   ipcMain.handle("speech-start", () => {
     console.log("[SPECTRE] Speech started");
     return true;
@@ -98,6 +189,32 @@ app.whenReady().then(() => {
       throw new Error(`TTS API request ${errorMessage}`);
     }
   });
+
+  ipcMain.handle("python-status-request", async () => {
+    if (!serverResult) {
+      console.error("[PYTHON-SERVER] Server not yet initialized");
+      throw new Error("Python server not ready");
+    }
+    return serverResult.ready;
+  });
+
+  ipcMain.handle("python-pid", () => {
+    return pythonPid !== null ? pythonPid : null;
+  });
+});
+
+app.on("will-quit", () => {
+  if (pythonProcess && pythonPid !== null) {
+    console.log("[PYTHON-SERVER] Killing subprocess PID:", pythonPid);
+    try {
+      process.kill(Number(pythonPid), "SIGTERM");
+    } catch (e: unknown) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      console.error("[PYTHON-SERVER] Failed to kill subprocess:", errorMsg);
+    }
+    pythonProcess = null;
+    pythonPid = null;
+  }
 });
 
 app.on("window-all-closed", () => {
