@@ -49,13 +49,21 @@ describe("Main Process Hyprland Integration", () => {
   });
 });
 
-describe("Vite Config Security", () => {
-  it("should not have server.host=true in production config", () => {
+describe("Vite Config Network Access", () => {
+  it("should have server configuration with host enabled for network debugging", () => {
     const viteConfigPath = path.join(PROJECT_ROOT, "vite.config.ts");
     const content = readFileSync(viteConfigPath, "utf8");
 
-    // Server host should only be true if explicitly set for dev mode
-    // It should not have server.host: true as a default
-    expect(content).not.toMatch(/server:\s*\{[^}]*host:\s*true/);
+    // Acceptance criteria requires Vite dev server to bind to network interfaces
+    // for remote debugging and hot-reload across networked devices
+    expect(content).toMatch(/server:\s*\{[^}]*host:\s*true/);
+  });
+
+  it("should have server port configured as 5173", () => {
+    const viteConfigPath = path.join(PROJECT_ROOT, "vite.config.ts");
+    const content = readFileSync(viteConfigPath, "utf8");
+
+    // Server port should be explicitly set to 5173 for consistency
+    expect(content).toMatch(/port:\s*5173/);
   });
 });
