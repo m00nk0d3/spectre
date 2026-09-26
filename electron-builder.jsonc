@@ -1,0 +1,19 @@
+{
+  "appId": "com.spectre.app",
+  "productName": "SPECTRE",
+  "directories": {
+    "output": "release"
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "category": "AudioVideo",
+    "maintainer": "m00nk0d3"
+  },
+  "files": [
+    "dist/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "dist/main/main.cjs"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "spectre",
+  "version": "1.0.0",
+  "description": "Local personal assistant with Digital Noir aesthetic - Electron + React + Three.js",
+  "main": "dist/main/main.cjs",
+  "author": "m00nk0d3",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "npm run build:electron",
+    "preview": "vite preview",
+    "build:electron": "vite build && electron-builder --platform linux --arch x64 --x64",
+    "postinstall": "electron-builder install-app-deps",
+    "lint": "eslint . --ext ts,tsx",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ricky0123/vad-web": "^1.0.5",
+    "openai": "^4.72.0"
+  },
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.0",
+    "@electron-toolkit/tsconfig": "^1.0.2",
+    "@types/node": "^22.10.2",
+    "@vitejs/plugin-react": "^4.3.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "three": "^0.169.0",
+    "@react-three/fiber": "^8.17.1",
+    "typescript": "~5.6.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1"
+  },
+  "build": {
+    "appId": "com.spectre.app",
+    "productName": "SPECTRE",
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "AudioVideo"
+    }
+  }
+}
