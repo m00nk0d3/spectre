@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
 
 // Basic Electron setup for Spectre
 console.log('Spectre is starting...');

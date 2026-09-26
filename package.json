@@ -1,11 +1,43 @@
 {
   "name": "spectre",
   "version": "1.0.0",
+  "description": "Local personal assistant with Digital Noir aesthetic - Electron + React + Three.js",
+  "main": "./src/main/main.ts",
+  "author": {
+    "name": "m00nk0d3",
+    "email": "hello@m00nk0d3.dev"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/m00nk0d3/spectre",
   "type": "module",
-  "description":"Local personal assistant - Digital Noir floating orb",
-  "main": "dist/main.js",
   "scripts": {
-    "init": "tsx watch src/index.ts",
-    "dev": "npm run init"
+    "dev": "vite dev",
+    "build": "npm run build:electron",
+    "preview": "vite preview",
+    "build:electron": "vite build && electron-builder --linux AppImage deb",
+    "postinstall": "electron-builder install-app-deps",
+    "lint": "eslint . --ext ts,tsx",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ricky0123/vad-web": "^0.0.31"
+  },
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.0",
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@react-three/fiber": "^8.17.1",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^8.70.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "eslint": "^8.57.0",
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0",
+    "typescript": "~5.6.2",
+    "vite": "^5.4.21"
   }
 }
