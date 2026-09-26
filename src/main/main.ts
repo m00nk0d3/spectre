@@ -13,7 +13,7 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     webPreferences: {
-      preload: process.env.ELECTRON_RENDERER_PATH || "./src/preload/index.ts",
+      preload: undefined,
       contextIsolation: true,
       nodeIntegration: false,
     },

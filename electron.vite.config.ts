@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  preload: ["src/preload/index.ts"],
   build: {
     rollupOptions: {
       output: {
