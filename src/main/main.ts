@@ -117,7 +117,7 @@ app.whenReady().then(async () => {
       throw new Error("Python server failed to load GPU model within timeout");
     }
 
-    console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pythonPid}`);
+      console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pythonPid}`);
   } catch (err) {
     console.error("[PYTHON-SERVER] Failed to start:", err);
     throw err; // Fail app startup gracefully
@@ -145,10 +145,15 @@ app.whenReady().then(async () => {
       const timeoutId = setTimeout(() => controller.abort(), Number(process.env.OPENAI_TIMEOUT) || 30000);
 
       try {
+        const apiAuth = process.env.LM_STUDIO_API_KEY || "";
+        if (!apiAuth) {
+          throw new Error("LM_STUDIO_API_KEY environment variable is not set");
+        }
+
         const response = await fetch("http://localhost:1234/v1/audio/speech", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${process.env.LM_STUDIO_API_KEY || ""}`,
+            "Authorization": `Bearer ${apiAuth}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -210,7 +215,15 @@ app.on("will-quit", () => {
       process.kill(Number(pythonPid), "SIGTERM");
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      console.error("[PYTHON-SERVER] Failed to kill subprocess:", errorMsg);
+      console.error("[PYTHON-SERVER] SIGTERM failed:", errorMsg);
+      // Fallback to SIGKILL for stubborn processes
+      try {
+        process.kill(Number(pythonPid), "SIGKILL");
+        console.log("[PYTHON-SERVER] Used SIGKILL to terminate subprocess");
+      } catch (sigkillErr: unknown) {
+        const sigkillMsg = sigkillErr instanceof Error ? sigkillErr.message : String(sigkillErr);
+        console.error("[PYTHON-SERVER] SIGKILL also failed:", sigkillMsg);
+      }
     }
     pythonProcess = null;
     pythonPid = null;

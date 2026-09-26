@@ -51,7 +51,7 @@ export async function spawnPythonServer(
     });
 
     pythonProcess.on("close", () => {
-      if (!resolved && !ready) resolve({ pid: pythonProcess.pid!, ready: false });
+      if (!resolved && !ready && pythonProcess.pid) resolve({ pid: pythonProcess.pid, ready: false });
     });
   });
 }
