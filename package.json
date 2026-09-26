@@ -17,7 +17,8 @@
     "build:electron": "vite build && electron-builder --linux AppImage deb",
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint . --ext ts,tsx",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "npm run type-check"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.31"

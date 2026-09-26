@@ -3,6 +3,12 @@ import * as THREE from "three";
 import { useRef, useEffect } from "react";
 import "../styles/index.css";
 
+// Apply transparent background globally to ensure full transparency
+const root = document.getElementById("root");
+if (root) {
+  root.style.backgroundColor = "transparent";
+}
+
 declare global {
   interface Window {
     electron: {
