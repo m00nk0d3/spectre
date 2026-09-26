@@ -13,7 +13,7 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     webPreferences: {
-      preload: "./src/preload/index.ts",
+      preload: process.env.ELECTRON_RENDERER_PATH || "./src/preload/index.ts",
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -45,7 +45,7 @@ app.whenReady().then(() => {
       console.log("[SPECTRE] TTS request for:", text.substring(0, 50) + "...");
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), parseInt(process.env.OPENAI_TIMEOUT || "30000", 10));
 
       const response = await fetch("http://localhost:1234/v1/audio/speech", {
         method: "POST",
@@ -71,8 +71,9 @@ app.whenReady().then(() => {
       const audioBuffer = await response.arrayBuffer();
       return audioBuffer;
     } catch (error: any) {
-      console.error("[SPECTRE] TTS synthesis failed:", error.message);
-      return null;
+      const errorMessage = `[SPECTRE] TTS synthesis failed: ${error.message}`;
+      console.error(errorMessage);
+      throw error; // Re-throw to allow caller to handle the failure instead of returning null
     }
   });
 });

@@ -26,19 +26,15 @@ const ShaderMaterial = ({ amplitude, noiseTime }: { amplitude: number; noiseTime
     // Simplex noise for procedural texture
     float hash(float n) { return fract(sin(n * 1e4) * 1e4); }
     float snoise(vec3 x) {
-      const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+      const vec2 C = vec2(1.0 / 3.0, 1.0 / 6.0);
       const vec4 K = vec4(1.0, 2.0, 3.0, 4.0);
       vec4 i = floor(x + dot(x, C.yx));
       vec4 x_ = x - i + dot(i, C.xxx);
       vec3 p = permute(permute(i.x) + i.y * i.z + K.zyx);
       vec3 q = p + x._xxx;
       vec3 r = q + x._xyz;
-      vec2 s1 = clamp(x, 0.5, 0.4999999);
-      vec3 m = mod(i.xy, 2.0) - 0.5 + vec3(1.0, 0.0, 0.0);
-      float norm = smoothstep(0.0, 0.6, x.yzw);
-      vec3 t = normalize(x.xxx);
-      vec4 h = step(x.zyzy.xy, q) + vec4(t.xxy, t.yzy, t.zyz, t.zzz);
-      return 49.0 * i.zzz + hash(x._xyz) * h.xx * norm;
+      float norm = smoothstep(0.0, 0.65, x.yzw);
+      return fract(49.0 * i.zzz + hash(x) * step(0.25, x.x));
     }
 
     void main() {
