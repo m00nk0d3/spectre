@@ -47,32 +47,49 @@ app.whenReady().then(() => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), Number(process.env.OPENAI_TIMEOUT) || 30000);
 
-      const response = await fetch("http://localhost:1234/v1/audio/speech", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.LM_STUDIO_API_KEY || ""}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "tts-1",
-          input: text,
-          voice: "alloy",
-          response_format: "mp3"
-        }),
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch("http://localhost:1234/v1/audio/speech", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.LM_STUDIO_API_KEY || ""}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "tts-1",
+            input: text,
+            voice: "alloy",
+            response_format: "mp3"
+          }),
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`TTS API returned ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`TTS API returned ${response.status}: ${response.statusText}`);
+        }
+
+        const audioBuffer = await response.arrayBuffer();
+        return audioBuffer;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+
+        let errorMessage: string;
+        if (fetchError instanceof TypeError && fetchError.message.includes("Failed to fetch")) {
+          errorMessage = "TTS API request failed. Please check if LM Studio is running and accessible on port 1234.";
+        } else if (fetchError instanceof DOMException && (fetchError.name === "AbortError" || fetchError.message.includes("timeout"))) {
+          errorMessage = "TTS API request timed out after 30s. The model may be slow or unavailable.";
+        } else {
+          errorMessage = `TTS API error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`;
+        }
+
+        console.error("[SPECTRE]", errorMessage);
+        throw new Error(errorMessage);
       }
-
-      const audioBuffer = await response.arrayBuffer();
-      return audioBuffer;
     } catch (error) {
-      console.error("[SPECTRE] TTS synthesis failed", error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[SPECTRE] TTS synthesis failed", errorMessage);
+      throw new Error(`TTS API request ${errorMessage}`);
     }
   });
 });
