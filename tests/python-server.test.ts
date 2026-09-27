@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import path from "path";
 
-const PROJECT_ROOT = "/home/m00nk0d3/dev/spectre/.sandcastle/worktrees/agent-4-1-microservico-fastapi-para-tts-com-16";
+const PROJECT_ROOT = process.cwd();
 
 describe("Main Process Python Integration", () => {
   it("should define pythonPid variable in main.ts", async () => {

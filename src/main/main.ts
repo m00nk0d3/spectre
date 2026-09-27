@@ -148,14 +148,14 @@ app.whenReady().then(async () => {
               model: "tts-1",
               input: text,
               voice: "alloy",
-              response_format: "mp3"
+              response_format: "wav"  // Use WAV format for consistent output
             }),
           });
 
           if (fetchResponse.ok) {
-            const mp3Buffer = await fetchResponse.arrayBuffer();
-            // Return MP3 buffer directly - renderer can handle it
-            return mp3Buffer;
+            const wavBuffer = await fetchResponse.arrayBuffer();
+            // Return WAV buffer - consistent with primary FastAPI TTS endpoint
+            return wavBuffer;
           }
         } catch (fallbackError) {
           console.error("[SPECTRE-TTS] Fallback also failed:", fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
