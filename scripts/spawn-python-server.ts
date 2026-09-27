@@ -42,7 +42,7 @@ export async function spawnPythonServer(
 
     let stdoutBuffer = "";
 
-    pythonProcess.stdout.on("data", (chunk: Buffer) => {
+    pythonProcess.stdout?.on("data", (chunk: Buffer) => {
       if (resolved) return; // Already resolved, ignore further output
 
       stdoutBuffer += chunk.toString();
@@ -67,8 +67,9 @@ export async function spawnPythonServer(
           ready = true;
           stdoutBuffer = ""; // reset for next load
           resolved = true;
-          console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pythonProcess.pid}`);
-          resolve({ pid: pythonProcess.pid!, ready });
+          const pid = pythonProcess.pid ?? 0;
+          console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pid}`);
+          resolve({ pid, ready });
         } else if (line.includes("Exception") || line.includes("Error")) {
           const errorMessage = `Python server error: ${line.trim()}`;
           console.error(`[PYTHON-SERVER] ${errorMessage}`);

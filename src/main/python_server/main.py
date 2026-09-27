@@ -2,6 +2,7 @@ from fastapi import FastAPI, Response
 from pydantic import BaseModel
 import os
 import tempfile
+import struct
 
 app = FastAPI()
 
@@ -13,22 +14,9 @@ class TTSPayload(BaseModel):
     voice: str = "alloy"
 
 
-@app.on_event("startup")
-async def load_model():
-    global MODEL_PATH
-
-    model_path_env = os.environ.get("KOKORO_MODEL_PATH", "")
-    if not model_path_env:
-        raise Exception(
-            "KOKORO_MODEL_PATH environment variable not set"
-        )
-
-    MODEL_PATH = model_path_env
-
+def get_model_processor_and_model():
+    """Get cached processor and model to avoid redundant imports."""
     try:
-        print(f"[PYTHON-SERVER] Loading Kokoro TTS model from: {MODEL_PATH}")
-
-        # Import transformers for actual Kokoro inference
         import torch
         from transformers import AutoProcessor, AutoModelForTextToSpeech
 
@@ -41,29 +29,54 @@ async def load_model():
             print("[PYTHON-SERVER] No GPU available, running on CPU")
 
         # Load actual Kokoro GGUF model using transformers pipeline
-        try:
-            from transformers import AutoProcessor, AutoModelForTextToSpeech
+        processor = AutoProcessor.from_pretrained(MODEL_PATH)
+        model = AutoModelForTextToSpeech.from_pretrained(MODEL_PATH).to(device).eval()
 
-            processor = AutoProcessor.from_pretrained(MODEL_PATH)
-            model = AutoModelForTextToSpeech.from_pretrained(MODEL_PATH).to(device).eval()
+        print(f"[PYTHON-SERVER] Model loaded successfully on {device}")
 
-            print(f"[PYTHON-SERVER] Model loaded successfully on {device}")
+    except ImportError:
+        # Fallback to onnxruntime-gpu for GGUF support
+        import onnxruntime as ort
+        if "cuda" in (os.environ.get("CUDA_VISIBLE_DEVICES", "") or "").lower():
+            raise Exception("onnxruntime-gpu required for CUDA inference")
 
-        except ImportError:
-            # Fallback to onnxruntime-gpu for GGUF support
-            import onnxruntime as ort
-            if device == "cuda" and not ort.get_device():
-                raise Exception("onnxruntime-gpu required for CUDA inference")
+        from transformers import AutoProcessor, AutoModelForTextToSpeech
+        processor = AutoProcessor.from_pretrained(MODEL_PATH)
+        model = AutoModelForTextToSpeech.from_pretrained(MODEL_PATH).to(device).eval()
 
-            from transformers import AutoProcessor, AutoModelForTextToSpeech
-            processor = AutoProcessor.from_pretrained(MODEL_PATH)
-            model = AutoModelForTextToSpeech.from_pretrained(MODEL_PATH).to(device).eval()
+        print(f"[PYTHON-SERVER] Model loaded successfully on {device}")
 
-            print(f"[PYTHON-SERVER] Model loaded successfully on {device}")
+    return processor, model
+
+
+@app.on_event("startup")
+async def load_model():
+    global MODEL_PATH
+
+    model_path_env = os.environ.get("KOKORO_MODEL_PATH", "")
+    if not model_path_env:
+        raise Exception(
+            "KOKORO_MODEL_PATH environment variable not set"
+        )
+
+    # Validate path exists and is a directory before proceeding
+    if not os.path.exists(model_path_env):
+        raise Exception(f"KOKORO_MODEL_PATH does not exist: {model_path_env}")
+
+    if not os.path.isdir(model_path_env):
+        raise Exception(f"KOKORO_MODEL_PATH is not a directory: {model_path_env}")
+
+    MODEL_PATH = model_path_env
+
+    try:
+        print(f"[PYTHON-SERVER] Loading Kokoro TTS model from: {MODEL_PATH}")
+
+        # Get cached processor and model (imports already at module level)
+        processor, model = get_model_processor_and_model()
 
         return {
-            "status": f"kokoro_model_loaded_on_{device}",
-            "device": device,
+            "status": f"kokoro_model_loaded_on_{model.device}",
+            "device": model.device,
             "model_path": MODEL_PATH
         }
     except Exception as e:
@@ -90,12 +103,8 @@ async def generate_tts(payload: TTSPayload):
             )
 
         # Actual Kokoro TTS inference
-        import torch
-        from transformers import AutoProcessor, AutoModelForTextToSpeech
-
         try:
-            processor = AutoProcessor.from_pretrained(MODEL_PATH)
-            model = AutoModelForTextToSpeech.from_pretrained(MODEL_PATH).to(device).eval()
+            processor, model = get_model_processor_and_model()
         except Exception as load_error:
             # Return minimal valid WAV audio on load failure (fallback behavior)
             wav_data, sample_rate = create_wav_silence(16000, 16000)
@@ -129,7 +138,6 @@ async def generate_tts(payload: TTSPayload):
 
 def create_wav_silence(num_samples: int, sample_rate: int):
     """Create WAV silence buffer with proper RIFF header"""
-    import struct
 
     duration = num_samples / sample_rate
     bytes_per_sample = 2  # int16
@@ -176,7 +184,6 @@ def create_wav_silence(num_samples: int, sample_rate: int):
 
 def create_wav_from_audio(audio_data: bytearray, sample_rate: int):
     """Create WAV file from audio data array"""
-    import struct
 
     num_samples = len(audio_data) // 2  # Assuming int16
     bytes_per_sample = 2
