@@ -18,7 +18,12 @@ export async function spawnPythonServer(
   modelPath: string = "",
 ): Promise<SpawnResult> {
   const cmd = detectPython();
-  const args = ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "1234"];
+  const args = [
+    "-m", "uvicorn",
+    "python_server.main:app",
+    "--host", "127.0.0.1",
+    "--port", "1234",
+  ];
 
   return new Promise((resolve, reject) => {
     let ready = false;
@@ -37,7 +42,7 @@ export async function spawnPythonServer(
 
     let stdoutBuffer = "";
 
-    pythonProcess.stdout.on("data", (chunk: Buffer) => {
+    pythonProcess.stdout?.on("data", (chunk: Buffer) => {
       if (resolved) return; // Already resolved, ignore further output
 
       stdoutBuffer += chunk.toString();
@@ -54,11 +59,17 @@ export async function spawnPythonServer(
           clearTimeout(timeoutId);
         }
 
-        if (line.toLowerCase().includes("gpu") || line.toLowerCase().includes("kokoro")) {
+        if (
+          line.toLowerCase().includes("gpu") ||
+          line.toLowerCase().includes("model_loaded") ||
+          line.toLowerCase().includes("kokoro")
+        ) {
           ready = true;
           stdoutBuffer = ""; // reset for next load
           resolved = true;
-          resolve({ pid: pythonProcess.pid!, ready });
+          const pid = pythonProcess.pid ?? 0;
+          console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pid}`);
+          resolve({ pid, ready });
         } else if (line.includes("Exception") || line.includes("Error")) {
           const errorMessage = `Python server error: ${line.trim()}`;
           console.error(`[PYTHON-SERVER] ${errorMessage}`);
