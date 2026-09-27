@@ -22,8 +22,9 @@ export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: stri
 
   const whisperPath = process.env.WHISPER_CPP_PATH || "./whisper.linux-x86_64.bin";
   const sanitizedModelPath = modelPath ? sanitizeShellArgument(path.normalize(modelPath)) : "";
+  const sanitizedWavPath = sanitizeShellArgument(wavPath);
 
-  const cmd = `"${whisperPath}" -f "${wavPath}" ${sanitizedModelPath ? `-m "${sanitizedModelPath}" ` : ""}--no-timestamps`;
+  const cmd = `"${whisperPath}" -f "${sanitizedWavPath}" ${modelPath ? `-m "${sanitizedModelPath}"` : ""} --no-timestamps`;
 
   console.log("[WHISPER] Executing:", cmd);
 
@@ -43,7 +44,7 @@ export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: stri
 
       const lines = stdout.split("\n").filter((l) => l.trim());
       if (lines.length === 0) {
-        resolve("");
+        reject(new Error("No transcription output from Whisper.cpp"));
       } else {
         const transcript = lines[lines.length - 1].trim();
         console.log("[WHISPER] Transcription:", transcript.substring(0, 100) + "...");

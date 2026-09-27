@@ -262,8 +262,8 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("audio-buffer-send", async (_event, float32Data: Float32Array | Buffer): Promise<AudioBufferOutput> => { try { if (float32Data.length === 0) throw new Error("Audio buffer is empty"); const wavBuffer = createWavBuffer(float32Data, 16000, 1); return { success: true, buffer: wavBuffer }; } catch (error) { console.error("[AUDIO-IPC] Send failed:", error instanceof Error ? error.message : String(error)); throw new Error(`Failed to send audio buffer: ${error instanceof Error ? error.message : String(error)}`); } });
 
-  ipcMain.handle("whisper-transcribe", async (_event, request: { wavPath: string; modelPath?: string }) => {
-    const result = await transcribeWithWhisperCpp(request.wavPath, request.modelPath);
+  ipcMain.handle("whisper-transcribe", async (_event, wavPath: string) => {
+    const result = await transcribeWithWhisperCpp(wavPath);
 
     return result;
   });

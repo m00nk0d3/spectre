@@ -27,7 +27,7 @@ describe("Issue #13: Whisper.cpp Local STT Handler - Organization, Types & Secur
 
     // Handler should be decomposed into a single line call to module function
     expect(content).toMatch(/ipcMain\.handle\(["\']whisper-transcribe["']/);
-    expect(content).toMatch(/await transcribeWithWhisperCpp\(request\.wavPath/);
+    expect(content).toMatch(/await transcribeWithWhisperCpp\(wavPath\)/);
   });
 
   // === TYPE_CONSISTENCY TESTS ===
@@ -133,5 +133,94 @@ describe("Issue #13: Whisper.cpp Local STT Handler - Organization, Types & Secur
     const content = readFileSync(whisperPath, "utf8");
 
     expect(content).toMatch(/lines\[lines\.length - 1\]/);
+  });
+
+  // === IPC CONTRACT TESTS ===
+
+  it("should accept single string argument from preload", () => {
+    const mainPath = path.join(PROJECT_ROOT, "src/main/main.ts");
+    const content = readFileSync(mainPath, "utf8");
+
+    // Main handler should accept single wavPath string, not object destructure
+    expect(content).toMatch(/ipcMain\.handle\(["\']whisper-transcribe["']/);
+    expect(content).toMatch(/async.*_event.*wavPath: string/);
+  });
+
+  it("should not destructure request object in handler", () => {
+    const mainPath = path.join(PROJECT_ROOT, "src/main/main.ts");
+    const content = readFileSync(mainPath, "utf8");
+
+    // Should NOT contain destructuring pattern that caused IPC contract mismatch
+    expect(content).not.toMatch(/request:\s*\{.*wavPath/);
+  });
+
+  it("should call transcribeWithWhisperCpp with single string argument", () => {
+    const mainPath = path.join(PROJECT_ROOT, "src/main/main.ts");
+    const content = readFileSync(mainPath, "utf8");
+
+    expect(content).toMatch(/await transcribeWithWhisperCpp\(wavPath\)/);
+  });
+
+  // === SECURITY TESTS - WAVE PATH SANITIZATION ===
+
+  it("should sanitize wavPath before shell interpolation", () => {
+    const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
+    const content = readFileSync(whisperPath, "utf8");
+
+    // Verify sanitizeShellArgument is called for wavPath
+    expect(content).toMatch(/const sanitizedWavPath.*sanitizeShellArgument\(wavPath\)/);
+  });
+
+  it("should use sanitized wavPath in command", () => {
+    const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
+    const content = readFileSync(whisperPath, "utf8");
+
+    // -f flag should use sanitizedWavPath, not raw wavPath
+    expect(content).toMatch(/-f\s+"[^"]*sanitizedWavPath[^"]*"/);
+  });
+
+  it("should sanitize wavPath regardless of model path presence", () => {
+    const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
+    const content = readFileSync(whisperPath, "utf8");
+
+    // wavPath sanitization should be unconditional
+    expect(content).toMatch(/const sanitizedWavPath.*sanitizeShellArgument\(wavPath\)/);
+  });
+
+  // === COMMAND CONSTRUCTION TESTS ===
+
+  it("should use consistent spacing pattern in command", () => {
+    const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
+    const content = readFileSync(whisperPath, "utf8");
+
+    // Command structure: -f "path" ${modelFlag?} --no-timestamps
+    // Should NOT have double-space between -f and model flag when model path present
+    expect(content).toMatch(/-m\s+"[^"]*"/);
+    expect(content).toMatch(/\-\-no-timestamps/);
+  });
+
+  it("should conditionally include model flag without trailing space", () => {
+    const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
+    const content = readFileSync(whisperPath, "utf8");
+
+    // Model flag should not have trailing space before conditional --no-timestamps
+    expect(content).toMatch(/-m\s+"[^"]*"/);
+    expect(content).toMatch(/\-\-no-timestamps/);
+  });
+
+  // === ERROR HANDLING TESTS ===
+
+  it("should reject on empty output from Whisper.cpp", () => {
+    const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
+    const content = readFileSync(whisperPath, "utf8");
+
+    expect(content).toMatch(/lines\.length\s*===\s*0/);
+  });
+
+  it("should throw error for empty transcription output", () => {
+    const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
+    const content = readFileSync(whisperPath, "utf8");
+
+    expect(content).toMatch(/reject.*new Error.*No transcription output/);
   });
 });
