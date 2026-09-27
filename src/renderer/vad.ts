@@ -11,16 +11,17 @@ export interface VADState {
 
 const DEFAULT_SILENCE_TIMEOUT_MS = parseInt(process.env.SILENCE_TIMEOUT_MS ?? "1500", 10);
 
-export function createVad(config?: VadConfig): {
+interface VademoduleReturn {
   vad: MicVAD;
   state: VADState;
   start: () => void;
   stop: () => void;
   cleanup: () => void;
-} {
+}
+
+export function createVad(config?: VadConfig): VademoduleReturn {
   const silenceTimeoutMs = config?.silenceTimeoutMs ?? DEFAULT_SILENCE_TIMEOUT_MS;
 
-  // Initialize VAD with WebAssembly (runs in browser context)
   let vad: any = null;
   let isInitializing = false;
 
@@ -30,6 +31,9 @@ export function createVad(config?: VadConfig): {
     lastSpeechTime: null,
   };
 
+  // Audio buffer collection for WAV export
+  const collectedBuffers: Float32Array[] = [];
+
   async function initialize(): Promise<void> {
     if (vad) return;
 
@@ -37,7 +41,6 @@ export function createVad(config?: VadConfig): {
     isInitializing = true;
 
     try {
-      // VAD library loads WASM locally—no network required
       vad = await MicVAD.new({
         getStream: async () => navigator.mediaDevices.getUserMedia({ audio: true }),
         pauseStream: async (stream) => {
@@ -80,9 +83,10 @@ export function createVad(config?: VadConfig): {
       clearInterval(checkIntervalId);
       checkIntervalId = null;
     }
+    // Clear collected buffers on cleanup
+    collectedBuffers.length = 0;
   }
 
-  // Fire IPC events when speech state changes
   const emitSpeechEvent = (event: "start" | "end") => {
     if (typeof window !== "undefined" && window.electron) {
       try {
@@ -99,7 +103,6 @@ export function createVad(config?: VadConfig): {
     }
   };
 
-  // Check speech state periodically
   let checkIntervalId: ReturnType<typeof setInterval> | null = null;
 
   const monitorSpeech = (): void => {
@@ -107,14 +110,12 @@ export function createVad(config?: VadConfig): {
 
     const now = Date.now();
 
-    // Use MicVAD's built-in listening state and our own speech tracking
     // If we haven't heard speech in silenceTimeoutMs, fire "end" event
     if (state.lastSpeechTime && now - state.lastSpeechTime > silenceTimeoutMs) {
       emitSpeechEvent("end");
       state.isSpeaking = false;
       state.lastSpeechTime = null;
     } else if (!vad.listening && state.lastSpeechTime !== null) {
-      // VAD stopped listening
       const timeSinceLastSpeech = now - state.lastSpeechTime;
       if (timeSinceLastSpeech > silenceTimeoutMs) {
         emitSpeechEvent("end");
@@ -122,7 +123,6 @@ export function createVad(config?: VadConfig): {
         state.lastSpeechTime = null;
       }
     } else if (!vad.listening && !state.isSpeaking) {
-      // First detection of silence after speech
       if (state.lastSpeechTime !== null) {
         emitSpeechEvent("end");
         state.isSpeaking = false;
@@ -131,18 +131,16 @@ export function createVad(config?: VadConfig): {
       state.isSpeaking = true;
       state.lastSpeechTime = now;
 
-      // Emit start event only when transitioning from silent to speaking
       if (!state.lastSpeechTime) {
         emitSpeechEvent("start");
         state.lastSpeechTime = now;
       }
     } else {
-      // For test compatibility: expose isSpeaking property on vad object
       (vad.isSpeaking = state.isSpeaking);
     }
   };
 
-  checkIntervalId = setInterval(monitorSpeech, 100); // Check every 100ms
+  checkIntervalId = setInterval(monitorSpeech, 100);
 
   return {
     vad,
@@ -153,4 +151,27 @@ export function createVad(config?: VadConfig): {
   };
 }
 
-export const vadModule = createVad();
+// Add audio collection methods to vadModule for IPC handling
+export const vadModule = (() => {
+  const collectedBuffers: Float32Array[] = [];
+
+  return Object.assign(createVad(), {
+    collectedBuffers,
+    setCollectedBuffers: (buffers: Float32Array[]) => {
+      collectedBuffers.length = 0;
+      for (const buf of buffers) {
+        collectedBuffers.push(new Float32Array(buf));
+      }
+    },
+    addCollectedBuffer: (buffer: Float32Array) => {
+      collectedBuffers.push(new Float32Array(buffer));
+    },
+  });
+})();
+
+// Expose methods globally for IPC handlers in renderer context
+if (typeof window !== "undefined") {
+  (window as any).__vadCollectAudio = (buffer: Float32Array) => {
+    vadModule.addCollectedBuffer(buffer);
+  };
+}

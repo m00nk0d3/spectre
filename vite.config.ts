@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),
       },
+      extensions: [".js", ".json", ".ts", ".tsx"],
     },
     base: "./",
     css: {
@@ -24,5 +25,4 @@ export default defineConfig(({ mode }) => {
       port: 5173,
     },
   };
-};
 });

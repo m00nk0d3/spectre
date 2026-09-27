@@ -2,7 +2,7 @@
   "appId": "com.spectre.app",
   "productName": "SPECTRE",
   "directories": {
-    "output": "release"
+    "output": "dist"
   },
   "linux": {
     "target": ["AppImage", "deb"],
