@@ -279,7 +279,8 @@ export default function App() {
         if (ctx && ctx.state !== "closed") {
           ctx.close().catch(console.error);
         }
-      };
+      }
+    };
 
     // Cleanup audio context on unmount
 
