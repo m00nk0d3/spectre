@@ -51,6 +51,8 @@ Visual interface based on a reactive "Digital Noir" floating orb, with fully loc
     *   Accumulate tokens in a temporary buffer.
     *   Parse the string looking for final punctuation (`.`, `!`, `?`).
     *   Once a sentence is validated, extract from buffer and submit to TTS queue.
+    *   **Implementation:** [`stream-tts.ts`](./src/main/stream-tts.ts) implements AsyncGenerator pattern with sequence tracking; IPC conversion to ReadableStream in [`main.ts`](./src/main/main.ts#143-172); types in [`ipc.ts`](./src/types/ipc.ts).
+    *   **Documentation:** See [`issues/15-shader-pipeline.md`](./issues/15-shader-pipeline.md) for Epic-to-issue tracing and acceptance criteria validation.
 *   **Local Synthesis:**
     *   Use local **Kokoro TTS** server (via Python) for ultra-fast generation.
     *   Send generated audio back to Renderer (React) via IPC for sequential playback without blocking LLM response.
@@ -61,5 +63,7 @@ Visual interface based on a reactive "Digital Noir" floating orb, with fully loc
     *   *Idle:* Slow rotation with procedural noise (Simplex Noise).
     *   *Listening:* Increase amplitude and expansion based on static uniforms.
     *   *Speaking:* Connect the TTS audio output to an AnalyserNode. Map real-time frequency data to GLSL variables, creating pulsation strictly synchronized with voice.
+*   **Implementation:** [`App.tsx`](./src/renderer/App.tsx) implements shader uniforms (`time`, `amplitude`, `noiseTime`), Simplex Noise inline for procedural texture, and FFT→uniform mapping via `useFrame` cycle; Digital Noir aesthetic (dark gray basecolor, subtle noise perturbation, red halo accents).
+*   **Documentation:** See [`issues/15-shader-pipeline.md`](./issues/15-shader-pipeline.md) for complete pipeline documentation.
 
 ---

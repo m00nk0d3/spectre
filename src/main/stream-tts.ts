@@ -39,6 +39,10 @@ export async function* streamTTSAudio(
       throw new Error(`TTS API returned ${response.status}: ${statusText}`);
     }
 
+    if (!response.body) {
+      throw new Error("TTS API did not return a readable body");
+    }
+
     const reader = response.body.getReader();
 
     while (true) {

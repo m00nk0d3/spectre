@@ -113,6 +113,7 @@
 *   **Acceptance Criteria:**
     *   O algoritmo acumula tokens e apenas envia dados ao TTS quando deteta sinais de conclusão (pontos finais, de interrogação, exclamação ou vírgulas estratégicas).
     *   As quebras não corrompem a sintaxe da frase enviada ao Kokoro.
+*   **Issue #15:** Documentação completa do pipeline de shader Digital Noir em [`issues/15-shader-pipeline.md`](./issues/15-shader-pipeline.md) incluindo Epic-to-issue tracing, implementação FFT→uniform mapping, e validação de acceptance criteria AC-001/AC-002/AC-003.
 
 ### Sub-issue 4.4: Fila IPC e Reprodução Contínua
 *   **Descrição:** Garantir que as frases geradas pelo servidor FastAPI são enviadas para a interface React e reproduzidas na ordem correta, sem encavalitar os áudios.
@@ -125,6 +126,7 @@
 
 ## Epic 5: Estética Digital Noir (Orbe Reativa)
 **Objetivo:** Trazer a personagem do SPECTRE à vida com um elemento tridimensional dinâmico, enigmático e altamente responsivo.
+*   **Documentation:** Complete pipeline documentation available in [`issues/15-shader-pipeline.md`](./issues/15-shader-pipeline.md).
 
 ### Sub-issue 5.1: Setup Base React-Three-Fiber
 *   **Descrição:** Criar o contexto 3D e renderizar a geometria base do assistente no ecrã transparente do Electron.
@@ -140,6 +142,7 @@
     *   A orbe possui texturas dinâmicas geradas proceduralmente (sem imagens estáticas).
     *   A iluminação respeita as condicionantes estéticas de alto contraste (cores escuras predominantes com halos precisos).
     *   A geometria base distorce-se levemente com o tempo (animação *idle*).
+*   **Implementation:** [`App.tsx`](./src/renderer/App.tsx) - Shader orbital com uniforms `time`, `amplitude`, `noiseTime`; Simplex Noise inline para textura procedimental; mapeamento FFT→uniform via `useFrame` ciclo.
 
 ### Sub-issue 5.3: Web Audio API (AnalyserNode)
 *   **Descrição:** Interceptar o áudio proveniente do modelo TTS antes de ir para as colunas do utilizador para análise frequencial no browser.
