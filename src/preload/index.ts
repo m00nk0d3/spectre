@@ -24,4 +24,5 @@ contextBridge.exposeInMainWorld("electron", {
   vadStatus: () => ipcRenderer.invoke("vad-status"),
 
   sendAudioBuffer: async (float32Data: Float32Array | Buffer): Promise<{ success: boolean; buffer?: ArrayBuffer }> => ipcRenderer.invoke("audio-buffer-send", float32Data),
+  whisperTranscribe: async (wavPath: string): Promise<string> => ipcRenderer.invoke("whisper-transcribe", wavPath),
 });

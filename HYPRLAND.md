@@ -20,7 +20,9 @@ nano .env
 
 Required environment variables:
 
-- `WINDOW_MANAGER_CLASS=spectre` - The Hyprland class name for window rules (default: "spectre")
+- `WINDOW_MANAGER_CLASS=spectre` - The Hyprland class name pattern for window rules (default: "spectre")
+  - Uses Hyprland's `windowrulev2` regex pattern `class:^(spectre)$` to match the window class
+  - Can be customized if using a different WM integration strategy
 - `LM_STUDIO_API_KEY=your-api-key` - Your LM Studio API key for TTS functionality
 
 ### 2. Configure Hyprland
@@ -28,7 +30,7 @@ Required environment variables:
 Copy the `hyprland.conf` file from the project root to your Hyprland configuration:
 
 ```bash
-# Method 1: Add to your existing hyprland.conf
+# Method 1: Append to your existing hyprland.conf
 cat /path/to/spectre/hyprland.conf >> ~/.config/hypr/hyprland.conf
 
 # Method 2: Copy entire file (replace your config)
@@ -38,6 +40,7 @@ cp /path/to/spectre/hyprland.conf ~/.config/hyprland.conf
 Or add directly to `~/.config/hypr/hyprland.conf`:
 
 ```hypr
+# SPECTRE Window Rules - using windowrulev2 with class pattern matching
 windowrulev2 = float, class:^(spectre)$
 windowrulev2 = noborder, class:^(spectre)$
 windowrulev2 = pin, class:^(spectre)$
@@ -46,9 +49,19 @@ windowrulev2 = noanim, class:^(spectre)$
 
 ## Hyprland Rules Explained
 
+The hyprland.conf file uses **Hyprland's `windowrulev2` syntax** with regex pattern matching on the window class:
+
+```hypr
+# Pattern: class:^(spectre)$ matches window class exactly "spectre"
+windowrulev2 = float, class:^(spectre)$  # Floating window mode (no stacking group)
+windowrulev2 = noborder, class:^(spectre)$  # Disable Hyprland borders and shadows
+windowrulev2 = pin, class:^(spectre)$       # Pin to all workspaces (persistent)
+windowrulev2 = noanim, class:^(spectre)$    # Disable fade animations
+```
+
 | Rule | Effect |
 |------|--------|
-| `float` | Forces SPECTRE window into floating mode in Hyprland |
+| `float` | Forces SPECTRE window into floating mode in Hyprland (excludes from stacking group) |
 | `noborder` | Disables Hyprland borders and global shadows for SPECTRE windows |
 | `pin` | Pins the window to all workspaces (persistent across workspace switching) |
 | `noanim` | Disables fade animations for smoother appearance/disappearance |
@@ -96,18 +109,29 @@ Expected output:
 
 ### Window not floating
 
-1. Verify `hyprland.conf` is properly configured
-2. Check that WINDOW_MANAGER_CLASS matches your environment
+1. Verify `hyprland.conf` is properly configured with all four rules (float, noborder, pin, noanim)
+2. Check that the WINDOW_MANAGER_CLASS matches your environment's window class pattern
 3. Restart Hyprland session: `hyprctl dispatch restartworkspace 0`
+4. Ensure the window rule order is correct in hyprland.conf
 
 ### Borders/shadows still visible
 
-1. Confirm you're using the latest hyprland.conf with noborder and noanim rules
-2. Some Hyprland versions require reloading config after changes
+1. Confirm you're using the latest hyprland.conf with all rules applied
+2. Some Hyprland versions require reloading config after changes: `hyprloadconf ~/.config/hyprland.conf`
 3. Try `killall hyprland && hyprland &` to restart compositor (not recommended in production)
+
+### Pattern matching issues
+
+The class pattern uses **regex syntax** where:
+- `^` matches start of string
+- `$` matches end of string
+- `^(spectre)$` matches exactly "spectre" (no prefix/suffix)
+
+If using a custom class name, update the rules in hyprland.conf and .env accordingly.
 
 ## Security Notes
 
 - Vite dev server is bound to localhost only in development mode
 - Production builds do not include network binding configuration
 - Always set WINDOW_MANAGER_CLASS environment variable before launching the app
+- The hyprland.conf rules use regex pattern matching; ensure class name matches your application window
