@@ -152,22 +152,22 @@ export function createVad(config?: VadConfig): VademoduleReturn {
 }
 
 // Add audio collection methods to vadModule for IPC handling
-export const vadModule: ReturnType<typeof createVad> & {
-  collectedBuffers: Float32Array[];
-  setCollectedBuffers: (buffers: Float32Array[]) => void;
-  addCollectedBuffer: (buffer: Float32Array) => void;
-} = Object.assign(createVad(), {
-  collectedBuffers: [],
-  setCollectedBuffers: (buffers: Float32Array[]) => {
-    collectedBuffers.length = 0;
-    for (const buf of buffers) {
-      collectedBuffers.push(new Float32Array(buf));
-    }
-  },
-  addCollectedBuffer: (buffer: Float32Array) => {
-    collectedBuffers.push(new Float32Array(buffer));
-  },
-});
+export const vadModule = (() => {
+  const collectedBuffers: Float32Array[] = [];
+
+  return Object.assign(createVad(), {
+    collectedBuffers,
+    setCollectedBuffers: (buffers: Float32Array[]) => {
+      collectedBuffers.length = 0;
+      for (const buf of buffers) {
+        collectedBuffers.push(new Float32Array(buf));
+      }
+    },
+    addCollectedBuffer: (buffer: Float32Array) => {
+      collectedBuffers.push(new Float32Array(buffer));
+    },
+  });
+})();
 
 // Expose methods globally for IPC handlers in renderer context
 if (typeof window !== "undefined") {

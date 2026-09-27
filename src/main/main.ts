@@ -165,7 +165,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("vad-get-collected-audio", async (_event, config?: { sampleRate: number; channels: number }) => {
+  ipcMain.handle("vad-get-collected-audio", async (_event, _config?: { sampleRate?: number; channels?: number }) => {
     try {
       const vad = await import("@/renderer/vad").then(m => m.vadModule);
       if (!vad || !vad.collectedBuffers) {
@@ -187,23 +187,15 @@ app.whenReady().then(async () => {
       }
 
       const audioConverter = await import("@/utils/audio-converter").then(m => m);
-      let wavBuffer: ArrayBuffer;
-      let sampleRate = config?.sampleRate || 16000;
-      let channels = config?.channels || 1;
-
-      if (config) {
-        wavBuffer = audioConverter.createWavBuffer(vad.collectedBuffers, sampleRate, channels);
-      } else {
-        const flattenedData = new Float32Array(
-          vad.collectedBuffers.reduce((acc, buf) => acc + buf.length, 0)
-        );
-        let offset = 0;
-        for (const buf of vad.collectedBuffers) {
-          flattenedData.set(buf, offset);
-          offset += buf.length;
-        }
-        wavBuffer = audioConverter.createWavBuffer(flattenedData, sampleRate, channels);
+      const flattenedData = new Float32Array(
+        vad.collectedBuffers.reduce((acc, buf) => acc + buf.length, 0)
+      );
+      let offset = 0;
+      for (const buf of vad.collectedBuffers) {
+        flattenedData.set(buf, offset);
+        offset += buf.length;
       }
+      const wavBuffer = audioConverter.createWavBuffer(flattenedData, config?.sampleRate ?? 16000, config?.channels ?? 1);
 
       return { success: true, buffer: wavBuffer };
     } catch (error) {

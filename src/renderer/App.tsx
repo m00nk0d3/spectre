@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect } from "react";
 import "../styles/index.css";
 import { vadModule } from "./vad";
 
@@ -99,23 +99,11 @@ function ShaderOrb({ amplitude }: { amplitude: number }) {
   );
 }
 
-// Helper function to convert AudioBuffer to Float32Array
-function audioBufferToFloat32Array(audioBuffer: AudioBuffer): Float32Array {
-  const channelData = audioBuffer.getChannelData(0);
-  if (typeof channelData[0] === "number") {
-    return new Float32Array(channelData);
-  }
-  // Fallback: assume interleaved or other format
-  return new Float32Array(channelData);
-}
-
 export default function App() {
   const amplitudeRef = useRef(0.01);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const rafIdRef = useRef<number | null>(null);
-  const lastSampleTimeRef = useRef<number>(0);
-  const sampleCountRef = useRef<number>(0);
 
   // Wire speech events from Electron IPC bridge
   useEffect(() => {
@@ -187,11 +175,8 @@ export default function App() {
         const monitorAmplitude = () => {
           if (!audioContextRef.current) return;
 
-          const now = audioContextRef.current.currentTime;
-
           // Analyze microphone input (if connected)
           if (sourceRef.current) {
-            // Get script processor buffer
             try {
               const scriptNode = audioContextRef.current.createScriptProcessor(512, 1, 1);
               const dataArray = new Float32Array(512);
@@ -224,60 +209,105 @@ export default function App() {
               console.warn("[APP] Amplitude monitoring failed:", err);
             }
           }
-
-          rafIdRef.current = requestAnimationFrame(monitorAmplitude);
         };
 
-        monitorAmplitude();
+        rafIdRef.current = requestAnimationFrame(monitorAmplitude);
 
-        return () => {
-          if (rafIdRef.current) {
-            cancelAnimationFrame(rafIdRef.current);
-          }
-
-          if (sourceRef.current && audioContextRef.current) {
-            try {
-              sourceRef.current.disconnect();
-            } catch (e) {}
-          }
-
-          if (audioContextRef.current?.state !== "closed") {
-            audioContextRef.current.close().catch(console.error);
-          }
-        };
       } catch (err) {
         console.error("[APP] Audio capture setup failed:", err);
+      } finally {
+        const ctx = audioContextRef.current;
+        if (ctx && ctx.state !== "closed") {
+          ctx.close().catch(console.error);
+        }
       }
-    };
+
+      // Set up real-time amplitude monitoring for visualization
+      const monitorAmplitude = () => {
+        if (!audioContextRef.current) return;
+
+        // Analyze microphone input (if connected)
+        if (sourceRef.current) {
+          try {
+            const scriptNode = audioContextRef.current.createScriptProcessor(512, 1, 1);
+            const dataArray = new Float32Array(512);
+
+            scriptNode.onaudioprocess = (e) => {
+              const inputData = e.inputBuffer.getChannelData(0);
+              for (let i = 0; i < inputData.length && i < dataArray.length; i++) {
+                dataArray[i] = inputData[i];
+              }
+
+              // Calculate RMS amplitude
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i] * dataArray[i];
+              }
+              const rms = Math.sqrt(sum / dataArray.length);
+
+              // Update visualization
+              if (rms > 0.01) {
+                amplitudeRef.current = Math.min(amplitudeRef.current + (rms - amplitudeRef.current) * 0.1, 0.3);
+              } else if (amplitudeRef.current > 0.01) {
+                // Smoothly decay
+                amplitudeRef.current *= 0.95;
+              }
+            };
+
+            sourceRef.current.connect(scriptNode);
+            scriptNode.connect(audioContextRef.current.destination);
+          } catch (err) {
+            console.warn("[APP] Amplitude monitoring failed:", err);
+          }
+        }
+      };
+
+      rafIdRef.current = requestAnimationFrame(monitorAmplitude);
+
+      monitorAmplitude();
+
+      return () => {
+        if (rafIdRef.current) {
+          cancelAnimationFrame(rafIdRef.current);
+        }
+
+        const ctx = audioContextRef.current;
+        if (sourceRef.current && ctx && ctx.state !== "closed") {
+          sourceRef.current.disconnect();
+        }
+
+        if (ctx && ctx.state !== "closed") {
+          ctx.close().catch(console.error);
+        }
+      };
 
     // Cleanup audio context on unmount
+
     const cleanupAudio = () => {
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
       }
 
-      if (sourceRef.current && audioContextRef.current?.state !== "closed") {
+      const ctx = audioContextRef.current;
+      if (sourceRef.current && ctx && ctx.state !== "closed") {
         sourceRef.current.disconnect();
-        try {
-          audioContextRef.current.close();
-        } catch (e) {}
+      }
+
+      if (ctx && ctx.state !== "closed") {
+        ctx.close().catch(console.error);
       }
     };
 
-    // Handle speech start to enable capture
-    window.electron.notifySpeechStart = async () => {
+    window.electron.notifySpeechStart = () => {
       if (!audioContextRef.current) return false;
 
       amplitudeRef.current = 0.2;
-      lastSampleTimeRef.current = audioContextRef.current.currentTime;
-      sampleCountRef.current = 0;
 
       console.log("[APP] Audio capture enabled");
       return true;
     };
 
-    // Handle speech end to stop capture and potentially convert to WAV
-    window.electron.notifySpeechEnd = async () => {
+    window.electron.notifySpeechEnd = () => {
       if (vadModule.state.isSpeaking) {
         vadModule.state.isSpeaking = false;
 
@@ -301,20 +331,24 @@ export default function App() {
                 offset += buf.length;
               }
 
-              // Convert to WAV buffer
-              const result = await window.electron.createWavBuffer(flattenedData);
-              if (result.success && result.buffer) {
-                console.log("[APP] Audio converted to WAV successfully");
-                // Could write to file or use the buffer as needed
-              } else {
-                console.error("[APP] WAV conversion failed");
-              }
+              // Convert to WAV buffer (fire and forget - conversion happens in IPC handler)
+              window.electron.createWavBuffer(flattenedData).then((result) => {
+                if (result.success && result.buffer) {
+                  console.log("[APP] Audio converted to WAV successfully");
+                } else {
+                  console.error("[APP] WAV conversion failed");
+                }
 
-              // Clear collected buffers after conversion
-              vadModule.collectedBuffers.length = 0;
+                // Clear collected buffers after conversion
+                vadModule.collectedBuffers.length = 0;
+              }).catch((err) => {
+                console.error("[APP] WAV conversion error:", err);
+              });
             }
           } catch (err) {
             console.error("[APP] WAV conversion error:", err);
+          } finally {
+            // Cleanup can go here if needed
           }
         }
       }
@@ -323,9 +357,8 @@ export default function App() {
       return true;
     };
 
-    setupAudioCapture();
+    setupAudioCapture(); return cleanupAudio;
 
-    return cleanupAudio;
   }, []);
 
   return (
