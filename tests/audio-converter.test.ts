@@ -42,8 +42,8 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      // Data subchunk at offset 32 ("data" identifier) - WAV spec
-      expect(bufferView.getUint32(32, true)).toBe(0x64617461); // "data" in little-endian
+      // Data subchunk at offset 32 ("data" identifier) - WAV spec (little-endian: d-a-t-a = [0x64, 0x61, 0x74, 0x61])
+      expect(bufferView.getUint32(32, true)).toBe(0x61746164); // "data" in little-endian
 
       // Data size: 4 samples * 1 channel * 2 bytes = 8 bytes at offset 36
       const expectedDataSize = 8;
@@ -59,7 +59,7 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       // Offset 44 is first sample (-1.0 → int16 -32767 due to rounding)
-      expect(bufferView.getInt16(40, true)).toBe(-32767);
+      expect(bufferView.getInt16(44, true)).toBe(-32767);
     });
 
     it("clamp valores > 1.0 para +1.0", () => {
@@ -68,7 +68,7 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       // Clamps 1.5 → 1.0, converts to +32767 (first sample at offset 44)
-      expect(bufferView.getInt16(40, true)).toBe(32767);
+      expect(bufferView.getInt16(44, true)).toBe(32767);
     });
 
     it("clamp valores < -1.0 para -1.0", () => {
@@ -77,7 +77,7 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       // Clamps -1.5 → -1.0, converts to -32767 (first sample at offset 44)
-      expect(bufferView.getInt16(40, true)).toBe(-32767);
+      expect(bufferView.getInt16(44, true)).toBe(-32767);
     });
 
     it("usa multiplicador 32767 (0x7FFF) para int16", () => {
@@ -86,7 +86,7 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       // 0.5 * 32767 = 16383.5 → round → 16384 (at offset 44)
-      expect(bufferView.getInt16(40, true)).toBeCloseTo(16384, 1);
+      expect(bufferView.getInt16(44, true)).toBeCloseTo(16384, 1);
     });
 
     it("mantém stereo se canais=2", () => {
@@ -215,9 +215,9 @@ describe("Issue #11: Conversor WAV", () => {
       // Offset 44: low byte of first int16 (+ve)
       expect(bufferView.getUint8(44)).toBeGreaterThanOrEqual(0);
 
-      // Offset 46: low byte of second int16 (-ve) — high byte will be 0xFF or less
-      const firstVal = bufferView.getInt16(40, true); // mono interleaved
-      const secondVal = bufferView.getInt16(42, true);
+      // Offset 42: low byte of second int16 (-ve) — high byte will be 0xFF or less
+      const firstVal = bufferView.getInt16(44, true); // mono interleaved
+      const secondVal = bufferView.getInt16(46, true);
 
       expect(firstVal).toBeGreaterThan(-32768); // +ve
       expect(secondVal).toBeLessThan(0); // Negative signed value;   // -ve
@@ -263,18 +263,18 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 16000, 2);
       const bufferView = new DataView(wavBuffer);
 
-      // Stereo interleaved layout at offset 40: [L0, R0, L1, R1...]
-      // Sample 0 (t=0): L[0]=0.5 → int16 = round(0.5 * 32767) = 16384 (at offset 40)
-      expect(bufferView.getInt16(40, true)).toBe(16384);
+      // Stereo interleaved layout at offset 44: [L0, R0, L1, R1...]
+      // Sample 0 (t=0): L[0]=0.5 → int16 = round(0.5 * 32767) = 16384 (at offset 44)
+      expect(bufferView.getInt16(44, true)).toBe(16384);
 
-      // Same sample t=0: R[0]=-0.3 → int16 = round(-0.3 * 32767) = -9830 (at offset 42)
-      expect(bufferView.getInt16(42, true)).toBe(-9830);
+      // Same sample t=0: R[0]=-0.3 → int16 = round(-0.3 * 32767) = -9830 (at offset 46)
+      expect(bufferView.getInt16(46, true)).toBe(-9830);
 
-      // Sample 1 (t=1): L[1]=0.8 → int16 = round(0.8 * 32767) = 26214 (at offset 44)
-      expect(bufferView.getInt16(44, true)).toBe(26214);
+      // Sample 1 (t=1): L[1]=0.8 → int16 = round(0.8 * 32767) = 26214 (at offset 48)
+      expect(bufferView.getInt16(48, true)).toBe(26214);
 
-      // Same sample t=1: R[1]=-0.7 → int16 = round(-0.7 * 32767) = -22937 (at offset 46)
-      expect(bufferView.getInt16(46, true)).toBe(-22937);
+      // Same sample t=1: R[1]=-0.7 → int16 = round(-0.7 * 32767) = -22937 (at offset 50)
+      expect(bufferView.getInt16(50, true)).toBe(-22937);
     });
 
     it("cria buffer para 4 canais com dados corretos em cada amostra", () => {
@@ -283,18 +283,18 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 16000, 4);
       const bufferView = new DataView(wavBuffer);
 
-      // For 4-channel interleaved: [F0, F1, F2, F3, L0, R0, L1, R1]
+      // For 4-channel interleaved at offset 44: [F0, F1, F2, F3, L0, R0, L1, R1]
       // Sample 0 (t=0): round(x * 32767) for x in [0.5, -0.3, 0.8, -0.7] = [16384, -9830, 26214, -22937]
-      expect(bufferView.getInt16(40, true)).toBe(16384);   // F[0]=0.5 → offset 40
-      expect(bufferView.getInt16(42, true)).toBe(-9830);    // F[1]=-0.3 → offset 42
-      expect(bufferView.getInt16(44, true)).toBe(26214);    // F[2]=0.8 → offset 44
-      expect(bufferView.getInt16(46, true)).toBe(-22937);   // F[3]=-0.7 → offset 46
+      expect(bufferView.getInt16(44, true)).toBe(16384);   // F[0]=0.5 → offset 44
+      expect(bufferView.getInt16(46, true)).toBe(-9830);    // F[1]=-0.3 → offset 46
+      expect(bufferView.getInt16(48, true)).toBe(26214);    // F[2]=0.8 → offset 48
+      expect(bufferView.getInt16(50, true)).toBe(-22937);   // F[3]=-0.7 → offset 50
 
       // Sample 1 (t=1): round(x * 32767) for x in [0.1, -0.2, 0.9, -0.6] = [3277, -6553, 29490, -19660]
-      expect(bufferView.getInt16(48, true)).toBe(3277);     // F[4]=0.1 → offset 48
-      expect(bufferView.getInt16(50, true)).toBe(-6553);    // F[5]=-0.2 → offset 50
-      expect(bufferView.getInt16(52, true)).toBe(29490);    // F[6]=0.9 → offset 52
-      expect(bufferView.getInt16(54, true)).toBe(-19660);   // F[7]=-0.6 → offset 54
+      expect(bufferView.getInt16(52, true)).toBe(3277);     // F[4]=0.1 → offset 52
+      expect(bufferView.getInt16(54, true)).toBe(-6553);    // F[5]=-0.2 → offset 54
+      expect(bufferView.getInt16(56, true)).toBe(29490);    // F[6]=0.9 → offset 56
+      expect(bufferView.getInt16(58, true)).toBe(-19660);   // F[7]=-0.6 → offset 58
     });
 
     it("block align é 2 para mono e 4 para stereo", () => {
@@ -307,6 +307,35 @@ describe("Issue #11: Conversor WAV", () => {
 
       expect(monoView.getUint8(29)).toBe(2); // Block align: channels * bitsPerSample / 8 = 1 * 16 / 8 = 2
       expect(stereoView.getUint8(29)).toBe(4); // Block align: channels * bitsPerSample / 8 = 2 * 16 / 8 = 4
+    });
+
+    it("verifica estrutura RIFF/WAV para compatibilidade com leitores padrão", () => {
+      // WAV playback compatibility: validate header structure integrity (AC2 requirement)
+      const testData = new Float32Array([0.5, -0.3, 0.7]);
+      const wavBuffer = createWavBuffer(testData);
+      const bufferView = new DataView(wavBuffer);
+
+      // RIFF chunk ID at offset 0 (little-endian: R-I-F-F = [0x46, 0x49, 0x46, 0x46])
+      expect(bufferView.getUint32(0, true)).toBe(0x52494646); // "RIFF"
+
+      // WAVE format at offset 8 (little-endian: W-A-V-E = [0x45, 0x56, 0x41, 0x57])
+      expect(bufferView.getUint32(8, true)).toBe(0x57415645); // "WAVE"
+
+      // fmt subchunk identifier at offset 12 (little-endian: f-m-t-space = [0x66, 0x6D, 0x74, 0x20])
+      expect(bufferView.getUint32(12, true)).toBe(0x20746D66);
+
+      // fmt subchunk size at offset 16 (16 bytes for PCM header)
+      expect(bufferView.getUint16(16, true)).toBe(16);
+
+      // Audio format 1 (PCM) at offset 18
+      expect(bufferView.getUint16(18, true)).toBe(1);
+
+      // Data subchunk identifier at offset 32 (little-endian: d-a-t-a = [0x64, 0x61, 0x74, 0x61])
+      expect(bufferView.getUint32(32, true)).toBe(0x61746164);
+
+      // Audio data starts at offset 44 (not 40) - critical fix for WAV playback compatibility
+      const firstSample = bufferView.getInt16(44, true);
+      expect(firstSample).not.toBe(0); // Should contain actual sample data
     });
   });
 
@@ -333,8 +362,8 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint8(40)).toBe(0x00);
-      expect(bufferView.getUint8(41)).toBe(0x40);
+      expect(bufferView.getUint8(44)).toBe(0x00);
+      expect(bufferView.getUint8(45)).toBe(0x40);
     });
 
     it("preserva valores exatos no clamp", () => {
@@ -343,11 +372,11 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       // +1.0 → +32767 (first sample at offset 44)
-      expect(bufferView.getInt16(40, true)).toBe(32767);
+      expect(bufferView.getInt16(44, true)).toBe(32767);
 
       // -1.0 → -32767 (second sample at offset 46 in interleaved mono)
       // Note: Math.round(-1.0 * 32767) = -32767
-      expect(bufferView.getInt16(42, true)).toBe(-32767);
+      expect(bufferView.getInt16(46, true)).toBe(-32767);
     });
   });
 

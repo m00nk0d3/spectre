@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-// Expose protected methods that allow the renderer process to call main IPC handlers
+// Expose protected methods that allow the renderer process to use IPC handlers
 contextBridge.exposeInMainWorld("electron", {
   notifySpeechStart: () => ipcRenderer.invoke("speech-start"),
   notifySpeechEnd: () => ipcRenderer.invoke("speech-end"),
