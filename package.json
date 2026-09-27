@@ -11,10 +11,10 @@
   "homepage": "https://github.com/m00nk0d3/spectre",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "npm run build:electron",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
     "preview": "vite preview",
-    "build:electron": "vite build && electron-builder --linux AppImage deb",
+    "build:electron": "electron-builder --linux AppImage deb",
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint . --ext ts,tsx",
     "type-check": "tsc --noEmit",
