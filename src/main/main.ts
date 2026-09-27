@@ -4,6 +4,7 @@ import { spawnPythonServer } from "@/scripts/spawn-python-server";
 import type { AudioBufferOutput } from "@/types/ipc";
 import { createWavBuffer } from "@/utils/audio-converter";
 import { transcribeWithWhisperCpp } from "./whisper";
+import { streamTTSAudio } from "./stream-tts";
 
 const WINDOW_MANAGER_CLASS = process.env.WINDOW_MANAGER_CLASS || "spectre";
 
@@ -130,6 +131,37 @@ app.whenReady().then(async () => {
       console.error("[SPECTRE] TTS synthesis failed", errorMessage);
       throw new Error(`TTS API request ${errorMessage}`);
     }
+  });
+
+  ipcMain.handle("get-tts-audio-stream", async (_event: any, text: string): Promise<ReadableStream<{ seq: number; data: ArrayBuffer }>> => {
+    const apiKey = process.env.LM_STUDIO_API_KEY || "";
+
+    if (!apiKey) {
+      throw new Error("LM_STUDIO_API_KEY environment variable is not set");
+    }
+
+    console.log("[SPECTRE] TTS streaming request for:", text.substring(0, 50) + "...");
+
+    const stream = streamTTSAudio(text, { apiKey });
+
+    // Convert AsyncGenerator to ReadableStream for IPC compatibility (AC-002: Non-blocking streaming)
+    return new ReadableStream<{ seq: number; data: ArrayBuffer }>({
+      async pull(controller) {
+        try {
+          const chunk = await stream.next();
+          if (!chunk.done) {
+            controller.enqueue(chunk.value);
+          } else {
+            controller.close(); // Complete signal (AC-003: reconstruction complete)
+          }
+        } catch (error) {
+          controller.error(error as Error);
+        }
+      },
+      async cancel() {
+        stream.return?.(undefined); // Clean up generator on cancellation
+      },
+    });
   });
 
   ipcMain.handle("python-status-request", async () => {

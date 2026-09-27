@@ -25,4 +25,6 @@ contextBridge.exposeInMainWorld("electron", {
 
   sendAudioBuffer: async (float32Data: Float32Array | Buffer): Promise<{ success: boolean; buffer?: ArrayBuffer }> => ipcRenderer.invoke("audio-buffer-send", float32Data),
   whisperTranscribe: async (wavPath: string): Promise<string> => ipcRenderer.invoke("whisper-transcribe", wavPath),
+  getTTSAudioStream: (text: string): Promise<ReadableStream<{ seq: number; data: ArrayBuffer }>> =>
+    ipcRenderer.invoke("get-tts-audio-stream", text),
 });
