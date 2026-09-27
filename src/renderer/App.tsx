@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import "../styles/index.css";
 import { vadModule } from "./vad";
 
@@ -15,11 +15,13 @@ declare global {
     electron: {
       notifySpeechStart: () => boolean;
       notifySpeechEnd: () => boolean;
+      createWavBuffer?: (float32Data: Float32Array) => Promise<{ success: boolean; buffer: ArrayBuffer }>;
+      vadGetCollectedAudio?: (config?: { sampleRate?: number; channels?: number }) => Promise<any>;
+      vadTriggerWavConversion?: (config?: { sampleRate?: number; channels?: number }) => Promise<any>;
     };
   }
 }
 
-// Custom shader material for Digital Noir aesthetic
 function ShaderOrb({ amplitude }: { amplitude: number }) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const noiseTimeRef = useRef(Date.now());
@@ -46,7 +48,6 @@ function ShaderOrb({ amplitude }: { amplitude: number }) {
         uniform float noiseTime;
         varying vec2 vUv;
 
-        // Simplex noise for procedural texture
         float hash(float n) { return fract(sin(n * 1e4) * 1e4); }
         float snoise(vec3 x) {
           const vec2 C = vec2(1.0 / 3.0, 1.0 / 6.0);
@@ -98,34 +99,234 @@ function ShaderOrb({ amplitude }: { amplitude: number }) {
   );
 }
 
+// Helper function to convert AudioBuffer to Float32Array
+function audioBufferToFloat32Array(audioBuffer: AudioBuffer): Float32Array {
+  const channelData = audioBuffer.getChannelData(0);
+  if (typeof channelData[0] === "number") {
+    return new Float32Array(channelData);
+  }
+  // Fallback: assume interleaved or other format
+  return new Float32Array(channelData);
+}
+
 export default function App() {
   const amplitudeRef = useRef(0.01);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const lastSampleTimeRef = useRef<number>(0);
+  const sampleCountRef = useRef<number>(0);
 
   // Wire speech events from Electron IPC bridge
-useEffect(() => {
-  if (typeof window !== "undefined" && window.electron) {
-    const initializeVAD = async () => {
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.electron) {
+      const initializeVAD = async () => {
+        try {
+          await vadModule.start();
+          window.electron.notifySpeechStart();
+        } catch (err) {
+          console.error("[VAD] Start failed:", err);
+        }
+      };
+
+      initializeVAD();
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    const cleanup = () => {
+      vadModule.cleanup();
+    };
+
+    return cleanup;
+  });
+
+  // Audio capture and conversion handler
+  useEffect(() => {
+    if (typeof window !== "undefined" && !window.electron) {
+      console.warn("[APP] Electron bridge not available");
+      return;
+    }
+
+    const setupAudioCapture = async () => {
       try {
-        await vadModule.start();
-        window.electron.notifySpeechStart(); // Initial state if already speaking
+        audioContextRef.current = new AudioContext();
+
+        // Setup microphone input for real-time capture during speech
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+          sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
+
+          // Create script processor or use AudioWorklet for real-time capture
+          const bufferSize = 4096;
+          const scriptNode = audioContextRef.current.createScriptProcessor(bufferSize, 1, 1);
+
+          scriptNode.onaudioprocess = (e) => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            const outputData = e.outputBuffer.getChannelData(0);
+
+            // Pass-through to avoid feedback
+            for (let i = 0; i < inputData.length; i++) {
+              outputData[i] = inputData[i];
+
+              // Convert to Float32 and capture during speech state
+              if (vadModule.state.isSpeaking) {
+                const buffer = new Float32Array([inputData[i]]);
+                vadModule.addCollectedBuffer(buffer);
+              }
+            }
+          };
+
+          sourceRef.current.connect(scriptNode);
+          scriptNode.connect(audioContextRef.current.destination);
+        }
+
+        // Set up real-time amplitude monitoring for visualization
+        const monitorAmplitude = () => {
+          if (!audioContextRef.current) return;
+
+          const now = audioContextRef.current.currentTime;
+
+          // Analyze microphone input (if connected)
+          if (sourceRef.current) {
+            // Get script processor buffer
+            try {
+              const scriptNode = audioContextRef.current.createScriptProcessor(512, 1, 1);
+              const dataArray = new Float32Array(512);
+
+              scriptNode.onaudioprocess = (e) => {
+                const inputData = e.inputBuffer.getChannelData(0);
+                for (let i = 0; i < inputData.length && i < dataArray.length; i++) {
+                  dataArray[i] = inputData[i];
+                }
+
+                // Calculate RMS amplitude
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                  sum += dataArray[i] * dataArray[i];
+                }
+                const rms = Math.sqrt(sum / dataArray.length);
+
+                // Update visualization
+                if (rms > 0.01) {
+                  amplitudeRef.current = Math.min(amplitudeRef.current + (rms - amplitudeRef.current) * 0.1, 0.3);
+                } else if (amplitudeRef.current > 0.01) {
+                  // Smoothly decay
+                  amplitudeRef.current *= 0.95;
+                }
+              };
+
+              sourceRef.current.connect(scriptNode);
+              scriptNode.connect(audioContextRef.current.destination);
+            } catch (err) {
+              console.warn("[APP] Amplitude monitoring failed:", err);
+            }
+          }
+
+          rafIdRef.current = requestAnimationFrame(monitorAmplitude);
+        };
+
+        monitorAmplitude();
+
+        return () => {
+          if (rafIdRef.current) {
+            cancelAnimationFrame(rafIdRef.current);
+          }
+
+          if (sourceRef.current && audioContextRef.current) {
+            try {
+              sourceRef.current.disconnect();
+            } catch (e) {}
+          }
+
+          if (audioContextRef.current?.state !== "closed") {
+            audioContextRef.current.close().catch(console.error);
+          }
+        };
       } catch (err) {
-        console.error("[VAD] Start failed:", err);
-        // Continue without VAD—TTS still functional
+        console.error("[APP] Audio capture setup failed:", err);
       }
     };
 
-    initializeVAD();
-  }
-}, []);
+    // Cleanup audio context on unmount
+    const cleanupAudio = () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
 
-// Cleanup on unmount
-useEffect(() => {
-  const cleanup = () => {
-    vadModule.cleanup();
-  };
+      if (sourceRef.current && audioContextRef.current?.state !== "closed") {
+        sourceRef.current.disconnect();
+        try {
+          audioContextRef.current.close();
+        } catch (e) {}
+      }
+    };
 
-  return cleanup;
-});
+    // Handle speech start to enable capture
+    window.electron.notifySpeechStart = async () => {
+      if (!audioContextRef.current) return false;
+
+      amplitudeRef.current = 0.2;
+      lastSampleTimeRef.current = audioContextRef.current.currentTime;
+      sampleCountRef.current = 0;
+
+      console.log("[APP] Audio capture enabled");
+      return true;
+    };
+
+    // Handle speech end to stop capture and potentially convert to WAV
+    window.electron.notifySpeechEnd = async () => {
+      if (vadModule.state.isSpeaking) {
+        vadModule.state.isSpeaking = false;
+
+        // Trigger audio conversion to WAV on speech end
+        if (typeof window.electron.createWavBuffer === "function") {
+          try {
+            const collectedData: Float32Array[] = [];
+
+            // Flatten all collected buffers from VAD
+            for (const buf of vadModule.collectedBuffers) {
+              collectedData.push(buf);
+            }
+
+            if (collectedData.length > 0) {
+              const totalLength = collectedData.reduce((a, b) => a + b.length, 0);
+              const flattenedData = new Float32Array(totalLength);
+
+              let offset = 0;
+              for (const buf of collectedData) {
+                flattenedData.set(buf, offset);
+                offset += buf.length;
+              }
+
+              // Convert to WAV buffer
+              const result = await window.electron.createWavBuffer(flattenedData);
+              if (result.success && result.buffer) {
+                console.log("[APP] Audio converted to WAV successfully");
+                // Could write to file or use the buffer as needed
+              } else {
+                console.error("[APP] WAV conversion failed");
+              }
+
+              // Clear collected buffers after conversion
+              vadModule.collectedBuffers.length = 0;
+            }
+          } catch (err) {
+            console.error("[APP] WAV conversion error:", err);
+          }
+        }
+      }
+
+      console.log("[APP] Audio capture disabled");
+      return true;
+    };
+
+    setupAudioCapture();
+
+    return cleanupAudio;
+  }, []);
 
   return (
     <Canvas camera={{ position: [0, 0, 4], fov: 45 }}>
