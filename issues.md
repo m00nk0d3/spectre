@@ -93,12 +93,17 @@
 **Objetivo:** Gerar voz humana em tempo real com hardware acceleration e orquestrar as respostas de forma sequencial para eliminar latências de espera.
 
 ### Sub-issue 4.1: Microserviço FastAPI para TTS com CUDA
-*   **Descrição:** Construir uma API em Python que mantenha o modelo Kokoro carregado diretamente na VRAM da RTX 5070 Ti para tempos de inferência quase nulos.
-*   **Requisitos:** Python 3.10+, FastAPI, bibliotecas PyTorch CUDA, modelo Kokoro.
+*   **Descrição:** Construir uma API em Python que mantenha o modelo Kokoro carregado diretamente na VRAM da GPU, expondo um endpoint POST `/tts` para síntese de áudio em tempo real.
+*   **Requisitos:** Python 3.10+, FastAPI, bibliotecas PyTorch CUDA (`onnxruntime-gpu`), modelos transformers do Kokoro.
+*   **Implementação:** [`src/main/python_server/main.py`](./src/main/python_server/main.py) - endpoint `/tts` com resposta binária WAV; [`scripts/spawn-python-server.ts`](./scripts/spawn-python-server.ts) para spawn no background; requirements em [`src/main/python_server/requirements.txt`](./src/main/python_server/requirements.txt).
+*   **Endpoint:** `POST /tts` aceita `{text, voice}`, retorna WAV audio como buffer binário.
+*   **Health Check:** `GET /health` confirma readiness do servidor.
+*   **Variáveis de Ambiente:** `KOKORO_MODEL_PATH` define caminho para diretório do modelo Kokoro GGUF (ex: `pf_dora`).
 *   **Acceptance Criteria:**
-    *   O serviço aloja um *endpoint* POST `/tts` que aceita uma string.
-    *   O modelo é mantido em memória quente (sem *cold starts* entre frases).
-    *   O output é devolvido em formato binário de áudio (WAV) de forma imediata (inferência sub-segundo).
+    *   O serviço hospeda um endpoint POST `/tts` que aceita uma string com texto e voz.
+    *   O modelo é mantido em memória quente (sem cold starts entre frases).
+    *   O output é devolvido em formato binário de áudio (WAV) de forma imediata (inferência sub-segundo via GPU CUDA).
+    *   O servidor inicia automaticamente ao arrancar a aplicação Electron e é encerrado limpo no close.
 
 ### Sub-issue 4.2: Configuração de Voz em Português
 *   **Descrição:** Adaptar o motor TTS e os pacotes fonéticos para suportar o idioma de Camões de forma otimizada.

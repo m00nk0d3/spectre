@@ -117,15 +117,28 @@ if (typeof window.electron.createWavBuffer === "function") {
     *   Critical parameter: `stream: true`.
 
 ### 4. Dynamic Speech (TTS and Chunking)
+*   **Python Microservice FastAPI:**
+    *   **Spawn Script:** [`scripts/spawn-python-server.ts`](./scripts/spawn-python-server.ts) launches the Python TTS server as a subprocess in background.
+    *   **Server Code:** `src/main/python_server/main.py` exposes `/tts` POST endpoint with Kokoro GPU for sub-second inference.
+    *   **Health Endpoint:** `GET /health` confirms server readiness.
+    *   **Requirements:** `src/main/python_server/requirements.txt` defines Python dependencies:
+        ```
+        fastapi==0.115.0
+        uvicorn[standard]==0.32.0
+        onnxruntime-gpu>=1.18.0
+        transformers==4.46.0
+        torch>=2.4.0
+        pydantic==2.9.0
+        ```
+    *   **Environment Variable:** `KOKORO_MODEL_PATH` points to Kokoro GGUF model directory (e.g., `pf_dora`).
+    *   **Lifecycle Management:** Server starts on app launch; killed on app close (no orphan processes).
+    *   **Endpoint:** `POST /tts` accepts `{text, voice}`, returns WAV audio as binary buffer.
 *   **Stream Chunking:**
     *   Accumulate tokens in a temporary buffer.
     *   Parse the string looking for final punctuation (`.`, `!`, `?`).
-    *   Once a sentence is validated, extract from buffer and submit to TTS queue.
+    *   Once a sentence is validated, extract from buffer and submit to TTS queue via IPC.
     *   **Implementation:** [`stream-tts.ts`](./src/main/stream-tts.ts) implements AsyncGenerator pattern with sequence tracking; IPC conversion to ReadableStream in [`main.ts`](./src/main/main.ts#143-172); types in [`ipc.ts`](./src/types/ipc.ts).
     *   **Documentation:** See [`issues/15-shader-pipeline.md`](./issues/15-shader-pipeline.md) for Epic-to-issue tracing and acceptance criteria validation.
-*   **Local Synthesis:**
-    *   Use local **Kokoro TTS** server (via Python) for ultra-fast generation.
-    *   Send generated audio back to Renderer (React) via IPC for sequential playback without blocking LLM response.
 
 ### 5. Digital Noir Aesthetic (3D Orb in Three.js)
 
@@ -324,3 +337,94 @@ The class pattern uses **regex syntax** where:
 If using a custom class name, update the rules in `hyprland.conf` and `.env` accordingly.
 
 ---
+
+## Python TTS Server Integration
+
+### Environment Variables
+
+```bash
+# KOKORO_MODEL_PATH - Required for Python server
+export KOKORO_MODEL_PATH=/path/to/kokoro-model  # e.g., /home/user/models/kokoro/pf_dora
+```
+
+### Installation Steps
+
+1. **Clone Kokoro Model:**
+   ```bash
+   git clone https://huggingface.co/haitianhao/akshaya-7b-v2-q4_0 /path/to/kokoro-model
+   # Or use your preferred Kokoro model: pf_dora, etc.
+   ```
+
+2. **Install Python Dependencies:**
+   ```bash
+   cd src/main/python_server
+   pip install -r requirements.txt
+   ```
+
+3. **Verify GPU Support:**
+   ```bash
+   python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+   python -c "import onnxruntime; print('Device:', onnxruntime.get_device())"
+   ```
+
+### Validation
+
+The server outputs status messages to stdout:
+- `[PYTHON-SERVER] Loading Kokoro TTS model from: <path>`
+- `[PYTHON-SERVER] Model loaded successfully on cuda/cpu`
+- `[PYTHON-SERVER] GPU detected, loading model to CUDA` (on NVIDIA hardware)
+
+Once the `gpu` or `model_loaded` keyword appears in logs, the Python server is ready and the Electron app proceeds.
+
+## Acceptance Criteria Summary
+
+### Foundation (Epic 1)
+- ✅ Transparent BrowserWindow with frameless design
+- ✅ Hyprland floating window rules applied via `windowrulev2`
+- ✅ Python subprocess lifecycle managed (spawn on start, kill on close)
+
+### Attentive Ear (Epic 2)
+- ✅ VAD detects speech activity via WebAssembly
+- ✅ Audio buffer conversion to WAV format
+- ✅ IPC methods for VAD state management
+
+### Transcription & Brain (Epic 3)
+- ✅ Whisper.cpp transcribes audio files to text
+- ✅ LM Studio streaming API for token-by-token response generation
+- ✅ Persona and Portuguese language constraints enforced via context messages
+
+### Dynamic Speech (Epic 4)
+- ✅ FastAPI microservice exposes `/tts` endpoint with Kokoro GPU
+- ✅ Sub-second TTS inference via CUDA acceleration
+- ✅ Chunking algorithm parses punctuation before TTS submission (AC-001/AC-002/AC-003)
+- ✅ AsyncGenerator → ReadableStream IPC conversion for non-blocking streams
+
+### Digital Noir Aesthetic (Epic 5)
+- ✅ Three.js shader material with GLSL uniforms (`time`, `amplitude`, `noiseTime`)
+- ✅ Simplex noise procedural texture generation
+- ✅ FFT→Uniform mapping via Web Audio API AnalyserNode
+- ✅ Audio-reactive orb scaling and distortion
+
+---
+
+## Security Notes
+
+- Vite dev server is bound to localhost only in development mode (port 5173)
+- Production builds do not include network binding configuration
+- Always set `KOKORO_MODEL_PATH` environment variable before launching the app
+- The FastAPI server binds to `127.0.0.1:1234` (localhost only), never exposed externally
+- Hyprland rules use regex pattern matching; ensure class name matches your application window
+- Transparency rule `transparent 0.95` sets 95% opacity (adjustable between 0.0–1.0)
+- IPC methods via ContextBridge are typed with TypeScript for compile-time safety
+- Python dependencies should be installed in isolated environment to avoid system conflicts
+
+---
+
+## Related Documentation
+
+- **IMPLEMENTATION-PLAN.md**: Complete architecture phases 1-5 with Epic-to-issue tracing
+- **issues/15-shader-pipeline.md**: Digital Noir shader pipeline and acceptance criteria validation
+- **src/main/python_server/main.py**: FastAPI TTS microservice implementation
+- **scripts/spawn-python-server.ts**: Python server lifecycle management
+
+*Generated: 2024 | Issue #36: Fix broken Electron dev/build scripts so app can run locally*

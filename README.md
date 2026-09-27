@@ -35,6 +35,24 @@ npm run build
   - `alwaysOnTop: true` for persistent visibility
   - IPC handlers for speech events and TTS synthesis
 
+### Python Microservice FastAPI (TTS)
+
+**Spawn Script:** [`scripts/spawn-python-server.ts`](./scripts/spawn-python-server.ts) launches the Python TTS server as a subprocess.
+**Server Code:** `src/main/python_server/main.py` exposes `/tts` POST endpoint with Kokoro GPU for sub-second inference.
+**Health Endpoint:** `GET /health` confirms server readiness.
+**Requirements:** `src/main/python_server/requirements.txt`:
+```
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+onnxruntime-gpu>=1.18.0
+transformers==4.46.0
+torch>=2.4.0
+pydantic==2.9.0
+```
+**Environment Variable:** `KOKORO_MODEL_PATH` points to Kokoro GGUF model directory (e.g., `pf_dora`).
+**Lifecycle Management:** Server starts on app launch; killed on app close (no orphan processes).
+**Endpoint:** `POST /tts` accepts `{text, voice}`, returns WAV audio as binary buffer.
+
 ### Preload Script (`src/preload/index.ts`)
 - Exposes safe IPC methods via contextBridge:
   - `notifySpeechStart` / `notifySpeechEnd` for VAD events
@@ -188,7 +206,8 @@ nano .env
 
 Required environment variables:
 - `WINDOW_MANAGER_CLASS=spectre` - The Hyprland class name pattern for window rules (default: "spectre")
-- `LM_STUDIO_API_KEY=your-api-key` - Your LM Studio API key for TTS functionality
+- `LM_STUDIO_API_KEY=your-api-key` - Your LM Studio API key for LLM integration
+- `KOKORO_MODEL_PATH=/path/to/kokoro-model` - Path to Kokoro TTS GGUF model directory (e.g., `pf_dora`)
 
 2. **Apply Hyprland Rules:**
 
@@ -217,7 +236,7 @@ Expected output:
 [✓] Found: Disable window animations
 [✓] All Hyprland integration rules validated successfully
 [✓] WINDOW_MANAGER_CLASS is configured
-[✓] LM_STUDIO_API_KEY is configured
+[✓] KOKORO_MODEL_PATH is configured
 ```
 
 ### Troubleshooting
@@ -230,6 +249,22 @@ Expected output:
 **Transparency not applied:**
 1. Confirm the transparency rule syntax is correct: `windowrulev2 = transparent <value>, class:^(spectre)$`
 2. The `<value>` must be a decimal between 0.0 (fully transparent) and 1.0 (fully opaque)
+
+### Python TTS Server Troubleshooting
+
+**Server not loading:**
+1. Verify `KOKORO_MODEL_PATH` points to an existing directory containing the Kokoro GGUF model
+2. Check that `onnxruntime-gpu` is installed and CUDA is available (`nvidia-smi`)
+3. Confirm model file exists: `<KOKORO_MODEL_PATH>/ggml-model-f16.bin` (or similar naming convention)
+
+**GPU not detected:**
+1. Ensure NVIDIA drivers are installed on your system
+2. Verify CUDA toolkit is properly configured
+3. Check Python can import `onnxruntime-gpu`: `python -c "import onnxruntime; print(onnxruntime.get_device())"`
+
+**Model loading timeout (>30s):**
+1. The server has a 30-second timeout waiting for GPU model load indicator
+2. Larger models may take longer; consider using smaller quantization (q4_0) if available
 
 ### Pattern Matching Notes
 

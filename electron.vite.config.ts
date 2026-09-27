@@ -1,16 +1,8 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "electron-vite";
 
 export default defineConfig({
-  plugins: [react()],
+  main: "src/main/main.ts",
   preload: ["src/preload/index.ts"],
-  build: {
-    rollupOptions: {
-      output: {
-        entryFileNames: "main/[name].[hash].js",
-        chunkFileNames: "commonchunks/[name].[hash].js",
-        assetFileNames: "assets/[name].[hash].[ext]",
-      },
-    },
-  },
+  plugins: [react()],
 });
