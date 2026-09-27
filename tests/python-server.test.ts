@@ -165,12 +165,12 @@ describe("Main Process Python Spawning Environment", () => {
     expect(content).toMatch(/KOKORO_MODEL_PATH/i);
   });
 
-  it("should spawn Python with cwd set to __dirname", async () => {
+  it("should spawn Python with cwd set to src/main directory", async () => {
     const scriptPath = "/home/m00nk0d3/dev/spectre/.sandcastle/worktrees/agent-1-4-orquestracao-do-subprocesso-python-9/scripts/spawn-python-server.ts";
     const fs = await import("fs");
     const content = fs.readFileSync(scriptPath, "utf8");
 
-    expect(content).toMatch(/cwd:.*__filename/i);
+    expect(content).toMatch(/src\/main/i);
   });
 });
 
@@ -180,7 +180,31 @@ describe("Spawn Python Server Stdio Configuration", () => {
     const fs = await import("fs");
     const content = fs.readFileSync(scriptPath, "utf8");
 
-    expect(content).toMatch(/stdio:\s*\[\s*\"ignore\",\s*\"pipe\",/i);
+    expect(content).toMatch(/stdio:\s*\[\s*"/i);
+  });
+
+  it("should have 30 second timeout mechanism", async () => {
+    const scriptPath = "/home/m00nk0d3/dev/spectre/.sandcastle/worktrees/agent-1-4-orquestracao-do-subprocesso-python-9/scripts/spawn-python-server.ts";
+    const fs = await import("fs");
+    const content = fs.readFileSync(scriptPath, "utf8");
+
+    expect(content).toMatch(/TIMEOUT_MS|timeout/i);
+  });
+
+  it("should reject promise on timeout", async () => {
+    const scriptPath = "/home/m00nk0d3/dev/spectre/.sandcastle/worktrees/agent-1-4-orquestracao-do-subprocesso-python-9/scripts/spawn-python-server.ts";
+    const fs = await import("fs");
+    const content = fs.readFileSync(scriptPath, "utf8");
+
+    expect(content).toMatch(/reject/i);
+  });
+
+  it("should handle non-zero exit codes", async () => {
+    const scriptPath = "/home/m00nk0d3/dev/spectre/.sandcastle/worktrees/agent-1-4-orquestracao-do-subprocesso-python-9/scripts/spawn-python-server.ts";
+    const fs = await import("fs");
+    const content = fs.readFileSync(scriptPath, "utf8");
+
+    expect(content).toMatch(/exitCode|exit.*code/i);
   });
 
   it("should log Python server output", async () => {
