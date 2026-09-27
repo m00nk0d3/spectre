@@ -18,6 +18,7 @@ declare global {
       createWavBuffer?: (float32Data: Float32Array) => Promise<{ success: boolean; buffer: ArrayBuffer }>;
       vadGetCollectedAudio?: (config?: { sampleRate?: number; channels?: number }) => Promise<any>;
       vadTriggerWavConversion?: (config?: { sampleRate?: number; channels?: number }) => Promise<any>;
+      sendAudioBuffer?: (float32Data: Float32Array | Buffer) => Promise<{ success: boolean; buffer?: ArrayBuffer }>;
     };
   }
 }

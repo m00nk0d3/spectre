@@ -22,4 +22,6 @@ contextBridge.exposeInMainWorld("electron", {
   vadCaptureStop: () => ipcRenderer.invoke("vad-capture-stop"),
   vadClearCollected: () => ipcRenderer.invoke("vad-clear-collected"),
   vadStatus: () => ipcRenderer.invoke("vad-status"),
+
+  sendAudioBuffer: async (float32Data: Float32Array | Buffer): Promise<{ success: boolean; buffer?: ArrayBuffer }> => ipcRenderer.invoke("audio-buffer-send", float32Data),
 });
