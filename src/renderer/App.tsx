@@ -2,6 +2,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useRef, useEffect } from "react";
 import "../styles/index.css";
+import { vadModule } from "./vad";
 
 // Apply transparent background globally to ensure full transparency
 const root = document.getElementById("root");
@@ -101,12 +102,30 @@ export default function App() {
   const amplitudeRef = useRef(0.01);
 
   // Wire speech events from Electron IPC bridge
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.electron) {
-      window.electron.notifySpeechStart();
-      window.electron.notifySpeechEnd();
-    }
-  }, []);
+useEffect(() => {
+  if (typeof window !== "undefined" && window.electron) {
+    const initializeVAD = async () => {
+      try {
+        await vadModule.start();
+        window.electron.notifySpeechStart(); // Initial state if already speaking
+      } catch (err) {
+        console.error("[VAD] Start failed:", err);
+        // Continue without VAD—TTS still functional
+      }
+    };
+
+    initializeVAD();
+  }
+}, []);
+
+// Cleanup on unmount
+useEffect(() => {
+  const cleanup = () => {
+    vadModule.cleanup();
+  };
+
+  return cleanup;
+});
 
   return (
     <Canvas camera={{ position: [0, 0, 4], fov: 45 }}>
