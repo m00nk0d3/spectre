@@ -31,3 +31,6 @@ pnpm-debug.log*
 
 # TypeScript cache
 .tsbuildinfo
+
+# Environment template files (must not be committed)
+.env.example

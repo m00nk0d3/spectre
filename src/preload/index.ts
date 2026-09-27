@@ -5,4 +5,6 @@ contextBridge.exposeInMainWorld("electron", {
   notifySpeechStart: () => ipcRenderer.invoke("speech-start"),
   notifySpeechEnd: () => ipcRenderer.invoke("speech-end"),
   getTTSAudio: (text: string): Promise<Buffer> => ipcRenderer.invoke("get-tts-audio", text),
+  pythonStatusRequest: () => ipcRenderer.invoke("python-status-request"),
+  pythonPid: () => ipcRenderer.invoke("python-pid"),
 });
