@@ -10,9 +10,11 @@ export function detectPython(): string {
   throw new Error("Python3 not found. Set PYTHON_CMD or install Python3.");
 }
 
+export type SpawnResult = { pid: number; ready: boolean };
+
 export async function spawnPythonServer(
   modelPath: string = "",
-): Promise<{ pid: number; ready: boolean }> {
+): Promise<SpawnResult> {
   const cmd = detectPython();
   const args = ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "1234"];
 

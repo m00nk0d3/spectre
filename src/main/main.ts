@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
-import { spawn } from "child_process";
+import { spawnPythonServer } from "@/scripts/spawn-python-server";
 
+// PYTHON_CMD environment variable fallback handled in scripts/spawn-python-server module
 const WINDOW_MANAGER_CLASS = process.env.WINDOW_MANAGER_CLASS || "spectre";
 
 let mainWindow: BrowserWindow | null = null;
@@ -12,7 +13,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
-    x: -1, // Allow window manager to position
+    x: -1,
     y: -1,
     frame: false,
     transparent: true,
@@ -31,87 +32,15 @@ function createWindow() {
   mainWindow.loadFile("./index.html");
 }
 
-async function spawnPythonServerLogic(): Promise<{ pid: number; ready: boolean }> {
-  const PYTHON_CMD = process.env.PYTHON_CMD || "python3";
-  const PYTHON_PATH = process.env.KOKORO_MODEL_PATH || "";
-
-  const pythonProcess = spawn(
-    PYTHON_CMD,
-    ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "1234"],
-    {
-      cwd: __dirname,
-      stdio: ["ignore", "pipe", "inherit"], // capture stdout for GPU confirmation
-      env: { ...process.env, KOKORO_MODEL_PATH: PYTHON_PATH },
-    }
-  );
-
-  pythonProcess.on("error", (err) => {
-    console.error("[PYTHON-SERVER] Failed to spawn:", err.message);
-  });
-
-  let ready = false;
-  const stdoutLines: string[] = [];
-  let timeoutId: NodeJS.Timeout | null = null;
-
-  // Collect all stdout and check for GPU marker
-  pythonProcess.stdout.on("data", (chunk: Buffer) => {
-    const text = String(chunk).trim();
-    console.log(`[PYTHON-SERVER] ${text}`);
-    stdoutLines.push(text);
-    if (text.toLowerCase().includes("gpu") || text.toLowerCase().includes("kokoro")) {
-      ready = true;
-      // Clear timeout on success
-      if (timeoutId) clearTimeout(timeoutId);
-    }
-  });
-
-  pythonProcess.stdout.on("close", () => {
-    // Final check if process exited without seeing GPU marker
-    if (!ready) {
-      const lastLine = stdoutLines[stdoutLines.length - 1] || "";
-      if (lastLine.toLowerCase().includes("gpu") || lastLine.toLowerCase().includes("kokoro")) {
-        ready = true;
-      } else {
-        console.error("[PYTHON-SERVER] Process exited without GPU confirmation");
-      }
-    }
-
-    // Clear timeout on exit
-    if (timeoutId) clearTimeout(timeoutId);
-  });
-
-  const TIMEOUT_MS = 30000; // 30s timeout waiting for GPU marker
-  return new Promise((resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      console.error("[PYTHON-SERVER] Timeout waiting for GPU model load");
-      resolve({ pid: pythonProcess.pid || 0, ready: false });
-    }, TIMEOUT_MS);
-
-    // Handle process exit
-    pythonProcess.on("close", (code) => {
-      if (code !== null && code !== 0) {
-        console.error(`[PYTHON-SERVER] Process exited with code ${code}`);
-        reject(new Error(`Python server exited with code ${code}`));
-      } else if (!ready) {
-        // Exit with code 0 but no GPU marker - check if process completed successfully
-        console.log("[PYTHON-SERVER] Process completed, checking final state");
-        resolve({ pid: pythonProcess.pid || 0, ready });
-      }
-    });
-
-    pythonProcess.on("error", reject);
-  });
-}
-
 let serverResult: { pid: number; ready: boolean } | null = null;
 
 app.whenReady().then(async () => {
   createWindow();
 
   try {
-    const result = await spawnPythonServerLogic();
+    const result = await spawnPythonServer(process.env.KOKORO_MODEL_PATH || "");
     pythonPid = result.pid;
-    serverResult = result; // Store for IPC access
+    serverResult = result;
 
     if (!result.ready) {
       throw new Error("Python server failed to load GPU model within timeout");
@@ -120,7 +49,7 @@ app.whenReady().then(async () => {
       console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pythonPid}`);
   } catch (err) {
     console.error("[PYTHON-SERVER] Failed to start:", err);
-    throw err; // Fail app startup gracefully
+    throw err;
   }
 
   app.on("activate", () => {

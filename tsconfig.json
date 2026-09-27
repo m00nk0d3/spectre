@@ -19,7 +19,12 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "incremental": true,
-    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo.json"
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo.json",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/scripts/*": ["./scripts/*"]
+    }
   },
   "include": ["src/**/*", "scripts/**/*", "tests/**/*", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
