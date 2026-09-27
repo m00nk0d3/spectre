@@ -1,7 +1,7 @@
 # SPECTRE Project: Architecture and Implementation
 
 ## Overview
-Local personal assistant operating with zero latency. 
+Local personal assistant operating with zero latency.
 Visual interface based on a reactive "Digital Noir" floating orb, with fully local AI processing and audio.
 
 ## Tech Stack
@@ -19,13 +19,17 @@ Visual interface based on a reactive "Digital Noir" floating orb, with fully loc
 *   **Main Process (`main.ts`):**
     *   Configure the `BrowserWindow` for `transparent: true`, `frame: false`, `hasShadow: false`, `alwaysOnTop: true`.
     *   CSS global: `body { background-color: rgba(0,0,0,0); }`
+    *   Set `windowClassName = process.env.WINDOW_MANAGER_CLASS || "spectre"` for Hyprland rule matching
 *   **Hyprland Rules (`~/.config/hyprland/hyprland.conf`):**
-  ```text
-  windowrulev2 = float, class:^(spectre)$
-  windowrulev2 = noborder, class:^(spectre)$
-  windowrulev2 = pin, class:^(spectre)$
-  windowrulev2 = noanim, class:^(spectre)$
+  - Uses `windowrulev2` with regex pattern matching on window class:
+  ```hypr
+  # Pattern: class:^(spectre)$ matches exactly "spectre"
+  windowrulev2 = float, class:^(spectre)$       # Floating (no stacking group)
+  windowrulev2 = noborder, class:^(spectre)$    # Disable borders and shadows
+  windowrulev2 = pin, class:^(spectre)$         # Pin to all workspaces
+  windowrulev2 = noanim, class:^(spectre)$      # Disable fade animations
   ```
+  - Set `WINDOW_MANAGER_CLASS` in `.env` to customize the class name pattern
 
 ### 2. Attentive Ear (VAD and Capture - Renderer Process)
 *   **Library:** Install `@ricky0123/vad-web` (processing via WebAssembly).
