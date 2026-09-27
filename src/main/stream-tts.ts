@@ -22,7 +22,6 @@ export async function* streamTTSAudio(
       headers: {
         "Authorization": `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
-        "Accept": "text/event-stream",
       },
       body: JSON.stringify({
         model: "tts-1",
@@ -40,11 +39,7 @@ export async function* streamTTSAudio(
       throw new Error(`TTS API returned ${response.status}: ${statusText}`);
     }
 
-    // Read as streaming chunks (Edge case EC-002: fallback detection could be added here)
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error("No readable stream from TTS endpoint");
-    }
+    const reader = response.body.getReader();
 
     while (true) {
       const { done, value } = await reader.read();
