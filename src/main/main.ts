@@ -82,61 +82,87 @@ app.whenReady().then(async () => {
     return true;
   });
 
-  ipcMain.handle("get-tts-audio", async (_event, text: string) => {
+  ipcMain.handle("get-tts-audio", async (_event, text: string): Promise<ArrayBuffer> => {
+    if (!serverResult) {
+      console.error("[SPECTRE-TTS] Python server not initialized yet");
+      throw new Error("Python TTS server not ready");
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
-      console.log("[SPECTRE] TTS request for:", text.substring(0, 50) + "...");
+      console.log("[SPECTRE-TTS] Generating audio for:", text.substring(0, 50));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), Number(process.env.OPENAI_TIMEOUT) || 30000);
+      timeoutId = setTimeout(() => controller.abort(), Number(process.env.OPENAI_TIMEOUT) || 30000);
 
-      try {
-        const apiAuth = process.env.LM_STUDIO_API_KEY || "";
-        if (!apiAuth) {
-          throw new Error("LM_STUDIO_API_KEY environment variable is not set");
-        }
+      // Call local FastAPI endpoint at /tts (not LM Studio)
+      const response = await fetch("http://127.0.0.1:1234/tts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: text,
+          voice: process.env.TTS_VOICE || "alloy"
+        }),
+        signal: controller.signal,
+      });
 
-        const response = await fetch("http://localhost:1234/v1/audio/speech", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiAuth}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "tts-1",
-            input: text,
-            voice: "alloy",
-            response_format: "mp3"
-          }),
-          signal: controller.signal,
-        });
+      if (timeoutId) clearTimeout(timeoutId);
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`TTS API returned ${response.status}: ${response.statusText}`);
-        }
-
-        const audioBuffer = await response.arrayBuffer();
-        return audioBuffer;
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-
-        let errorMessage: string;
-        if (fetchError instanceof TypeError && fetchError.message.includes("Failed to fetch")) {
-          errorMessage = "TTS API request failed. Please check if LM Studio is running and accessible on port 1234.";
-        } else if (fetchError instanceof DOMException && (fetchError.name === "AbortError" || fetchError.message.includes("timeout"))) {
-          errorMessage = "TTS API request timed out after 30s. The model may be slow or unavailable.";
-        } else {
-          errorMessage = `TTS API error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`;
-        }
-
-        console.error("[SPECTRE]", errorMessage);
-        throw new Error(errorMessage);
+      if (!response.ok) {
+        const statusText = response.statusText || "";
+        throw new Error(`TTS API returned ${response.status}: ${statusText}`);
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("[SPECTRE] TTS synthesis failed", errorMessage);
-      throw new Error(`TTS API request ${errorMessage}`);
+
+      const wavBuffer = await response.arrayBuffer();
+
+      console.log("[SPECTRE-TTS] Audio generated successfully");
+      return wavBuffer;
+    } catch (fetchError) {
+      if (timeoutId) clearTimeout(timeoutId);
+
+      let errorMessage: string;
+      if (fetchError instanceof TypeError && fetchError.message.includes("Failed to fetch")) {
+        errorMessage = "TTS API request failed. Please ensure FastAPI server is running on port 1234.";
+      } else if (fetchError instanceof DOMException && (fetchError.name === "AbortError" || fetchError.message.includes("timeout"))) {
+        errorMessage = "TTS API request timed out after 30s";
+      } else {
+        errorMessage = `TTS API error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`;
+      }
+
+      console.error("[SPECTRE-TTS]", errorMessage);
+
+      // Fallback to external LM Studio when FastAPI unreachable (optional but recommended)
+      const apiAuth = process.env.LM_STUDIO_API_KEY || "";
+      if (apiAuth) {
+        console.warn("[SPECTRE-TTS] Falling back to external LM Studio service");
+        try {
+          const fetchResponse = await fetch("http://localhost:1234/v1/audio/speech", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiAuth}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "tts-1",
+              input: text,
+              voice: "alloy",
+              response_format: "mp3"
+            }),
+          });
+
+          if (fetchResponse.ok) {
+            const mp3Buffer = await fetchResponse.arrayBuffer();
+            // Return MP3 buffer directly - renderer can handle it
+            return mp3Buffer;
+          }
+        } catch (fallbackError) {
+          console.error("[SPECTRE-TTS] Fallback also failed:", fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
+        }
+      }
+
+      throw new Error(`TTS API request failed: ${errorMessage}`);
     }
   });
 
