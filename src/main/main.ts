@@ -5,6 +5,7 @@ import type { AudioBufferOutput } from "@/types/ipc";
 import { createWavBuffer } from "@/utils/audio-converter";
 import { transcribeWithWhisperCpp } from "./whisper";
 import { streamTTSAudio } from "./stream-tts";
+import { CONTEXT_MESSAGES } from "@/ai/messages/context";
 
 const WINDOW_MANAGER_CLASS = process.env.WINDOW_MANAGER_CLASS || "spectre";
 
@@ -40,6 +41,12 @@ let isSpeechActive = false;
 
 app.whenReady().then(async () => {
   createWindow();
+
+  // INITIALIZE AI CONTEXT MESSAGES (AC-01: IDIOMA ESTRITO, AC-02: FORMATAÇÃO ZERO, AC-03: PERSONA AMIGO-PROFISIONAL)
+  console.log("[AI-COMMUNICATIONS] Context messages initialized:", CONTEXT_MESSAGES.length);
+  console.log("[AI-COMMUNICATIONS] IDIOMA ESTRITO - Responda 100% em português, independentemente do idioma usado pelo usuário");
+  console.log("[AI-COMMUNICATIONS] FORMATAÇÃO ZERO - Não use Markdown (asteriscos, hashtags, pontos de lista, backticks). Produza texto puro para síntese de voz natural.");
+  console.log("[AI-COMMUNICATIONS] PERSONA AMIGO-PROFISIONAL - Trate o usuário como um amigo próximo, com bom senso de humor e tom informal, mas mantendo sempre respeito profissional. Não seja robótico. Seja conversacional mas educado.");
 
   try {
     const result = await spawnPythonServer(process.env.KOKORO_MODEL_PATH || "");
