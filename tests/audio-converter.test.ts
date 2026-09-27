@@ -187,12 +187,24 @@ describe("Issue #11: Conversor WAV", () => {
 
   // AC2: Compatibilidade com leitores padrão
   describe("AC2: Compatibilidade com Leitores de Áudio Padrão", () => {
-    it("buffer tem tamanho esperado para N samples", () => {
+    it("buffer tem tamanho esperado para N samples mono", () => {
       const numSamples = 100;
       const testData = new Float32Array(numSamples).fill(0.5);
       const wavBuffer = createWavBuffer(testData, 16000, 1);
 
       expect(wavBuffer.byteLength).toBe(44 + numSamples * 2);
+    });
+
+    it("cria buffer stereo com tamanho correto (N samples × 2 canais)", () => {
+      const numSamples = 50;
+      const testData = new Float32Array(numSamples * 2); // Interleaved: [L0,R0, L1,R1, ...]
+      for (let i = 0; i < numSamples; i++) {
+        testData[i * 2] = 0.5;   // Left channel
+        testData[i * 2 + 1] = -0.3; // Right channel
+      }
+      const wavBuffer = createWavBuffer(testData, 16000, 2);
+
+      expect(wavBuffer.byteLength).toBe(44 + numSamples * 2 * 2); // 4 bytes per sample pair (L+R interleaved)
     });
 
     it("dados são int16 signed, não unsigned", () => {
@@ -242,6 +254,47 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       expect(bufferView.getUint32(25, true)).toBe(64000); // Byte rate: 16000 * 2 * 16 / 8 = 64000
+    });
+
+    it("verifica que valores stereo são corretamente escritos nos dados interleaved", () => {
+      // Test case for multi-channel sample correctness (issue #11 blocker fix)
+      const testData = new Float32Array([0.5, -0.3, 0.8, -0.7]);
+      // Interleaved stereo: [L0=0.5, R0=-0.3, L1=0.8, R1=-0.7]
+      const wavBuffer = createWavBuffer(testData, 16000, 2);
+      const bufferView = new DataView(wavBuffer);
+
+      // Stereo interleaved layout at offset 40: [L0, R0, L1, R1...]
+      // Sample 0 (t=0): L[0]=0.5 → int16 = round(0.5 * 32767) = 16384 (at offset 40)
+      expect(bufferView.getInt16(40, true)).toBe(16384);
+
+      // Same sample t=0: R[0]=-0.3 → int16 = round(-0.3 * 32767) = -9830 (at offset 42)
+      expect(bufferView.getInt16(42, true)).toBe(-9830);
+
+      // Sample 1 (t=1): L[1]=0.8 → int16 = round(0.8 * 32767) = 26214 (at offset 44)
+      expect(bufferView.getInt16(44, true)).toBe(26214);
+
+      // Same sample t=1: R[1]=-0.7 → int16 = round(-0.7 * 32767) = -22937 (at offset 46)
+      expect(bufferView.getInt16(46, true)).toBe(-22937);
+    });
+
+    it("cria buffer para 4 canais com dados corretos em cada amostra", () => {
+      // Test for 4-channel (multi-channel beyond stereo) - blocker fix validation
+      const testData = new Float32Array([0.5, -0.3, 0.8, -0.7, 0.1, -0.2, 0.9, -0.6]); // 8 values for 4 channels × 2 samples
+      const wavBuffer = createWavBuffer(testData, 16000, 4);
+      const bufferView = new DataView(wavBuffer);
+
+      // For 4-channel interleaved: [F0, F1, F2, F3, L0, R0, L1, R1]
+      // Sample 0 (t=0): round(x * 32767) for x in [0.5, -0.3, 0.8, -0.7] = [16384, -9830, 26214, -22937]
+      expect(bufferView.getInt16(40, true)).toBe(16384);   // F[0]=0.5 → offset 40
+      expect(bufferView.getInt16(42, true)).toBe(-9830);    // F[1]=-0.3 → offset 42
+      expect(bufferView.getInt16(44, true)).toBe(26214);    // F[2]=0.8 → offset 44
+      expect(bufferView.getInt16(46, true)).toBe(-22937);   // F[3]=-0.7 → offset 46
+
+      // Sample 1 (t=1): round(x * 32767) for x in [0.1, -0.2, 0.9, -0.6] = [3277, -6553, 29490, -19660]
+      expect(bufferView.getInt16(48, true)).toBe(3277);     // F[4]=0.1 → offset 48
+      expect(bufferView.getInt16(50, true)).toBe(-6553);    // F[5]=-0.2 → offset 50
+      expect(bufferView.getInt16(52, true)).toBe(29490);    // F[6]=0.9 → offset 52
+      expect(bufferView.getInt16(54, true)).toBe(-19660);   // F[7]=-0.6 → offset 54
     });
 
     it("block align é 2 para mono e 4 para stereo", () => {

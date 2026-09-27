@@ -11,7 +11,8 @@ export function createWavBuffer(
   const clampedData = Array.from(float32Data).map((v) => Math.max(-1, Math.min(1, v)));
 
   // Calcular tamanhos de header e arquivo total
-  const numSamples = clampedData.length;
+  // Para dados interleaved: N amostras × canais × 2 bytes = tamanho em bytes
+  const numSamples = (clampedData.length / channels) | 0;
   const dataSizeBytes = numSamples * channels * 2; // 2 bytes por amostra por canal
   const fileSize = 44 + dataSizeBytes; // Header fixo de 44 bytes + dados
 
@@ -106,11 +107,12 @@ export function createWavBuffer(
   // Write audio data at offset 40 (after RIFF + WAVE + fmt subchunk + data identifier + data size)
   let sampleIdx = 0;
   while (sampleIdx < numSamples) {
+    const baseOffset = sampleIdx * channels;
     for (let ch = 0; ch < channels; ch++) {
-      const val = clampedData[sampleIdx + ch];
+      const val = clampedData[baseOffset + ch];
       // Little-endian: low byte first, then high byte
-      headerBuffer[40 + sampleIdx * channels * 2 + ch * 2] = Math.round(val * 32767) & 0xff;
-      headerBuffer[41 + sampleIdx * channels * 2 + ch * 2] = (Math.round(val * 32767) >> 8) & 0xff;
+      headerBuffer[40 + baseOffset * 2 + ch * 2] = Math.round(val * 32767) & 0xff;
+      headerBuffer[41 + baseOffset * 2 + ch * 2] = (Math.round(val * 32767) >> 8) & 0xff;
     }
     sampleIdx++;
   }
