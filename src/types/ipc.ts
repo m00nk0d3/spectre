@@ -9,4 +9,4 @@ export interface WhisperTranscribeRequest {
   wavPath: string;
 }
 
-export type WhisperTranscribeResponse = string | null;
+export type WhisperTranscribeResponse = string;
