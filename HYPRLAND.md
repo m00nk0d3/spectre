@@ -41,10 +41,11 @@ Or add directly to `~/.config/hypr/hyprland.conf`:
 
 ```hypr
 # SPECTRE Window Rules - using windowrulev2 with class pattern matching
-windowrulev2 = float, class:^(spectre)$
-windowrulev2 = noborder, class:^(spectre)$
-windowrulev2 = pin, class:^(spectre)$
-windowrulev2 = noanim, class:^(spectre)$
+windowrulev2 = float, class:^(spectre)$              # Floating window mode (no stacking group)
+windowrulev2 = noborder, class:^(spectre)$          # Disable Hyprland borders and shadows
+windowrulev2 = pin, class:^(spectre)$               # Pin to all workspaces (persistent)
+windowrulev2 = noanim, class:^(spectre)$            # Disable fade animations
+windowrulev2 = transparent 0.95, class:^(spectre)$  # Set window opacity to 95%
 ```
 
 ## Hyprland Rules Explained
@@ -65,6 +66,7 @@ windowrulev2 = noanim, class:^(spectre)$    # Disable fade animations
 | `noborder` | Disables Hyprland borders and global shadows for SPECTRE windows |
 | `pin` | Pins the window to all workspaces (persistent across workspace switching) |
 | `noanim` | Disables fade animations for smoother appearance/disappearance |
+| `transparent <value>` | Sets window opacity; value is decimal between 0.0 and 1.0 (e.g., 0.95 = 95% opaque) |
 
 ## Development Workflow
 
@@ -104,21 +106,22 @@ Expected output:
 ✅ SPECTRE always floats in Hyprland (no stacking group)
 ✅ Ignored Hyprland borders and global shadows
 ✅ Pinned to all workspaces (persistent across workspace switching)
+✅ Window opacity set via transparency rule (default 95%)
 
 ## Troubleshooting
 
 ### Window not floating
 
-1. Verify `hyprland.conf` is properly configured with all four rules (float, noborder, pin, noanim)
+1. Verify `hyprland.conf` is properly configured with all five rules (float, noborder, pin, noanim, transparent)
 2. Check that the WINDOW_MANAGER_CLASS matches your environment's window class pattern
 3. Restart Hyprland session: `hyprctl dispatch restartworkspace 0`
 4. Ensure the window rule order is correct in hyprland.conf
 
-### Borders/shadows still visible
+### Transparency not applied
 
-1. Confirm you're using the latest hyprland.conf with all rules applied
-2. Some Hyprland versions require reloading config after changes: `hyprloadconf ~/.config/hyprland.conf`
-3. Try `killall hyprland && hyprland &` to restart compositor (not recommended in production)
+1. Confirm the transparency rule syntax is correct: `windowrulev2 = transparent <value>, class:^(spectre)$`
+2. The `<value>` must be a decimal between 0.0 (fully transparent) and 1.0 (fully opaque)
+3. Restart Hyprland session or reload config if transparency doesn't apply
 
 ### Pattern matching issues
 
@@ -135,3 +138,4 @@ If using a custom class name, update the rules in hyprland.conf and .env accordi
 - Production builds do not include network binding configuration
 - Always set WINDOW_MANAGER_CLASS environment variable before launching the app
 - The hyprland.conf rules use regex pattern matching; ensure class name matches your application window
+- Transparency rule `transparent 0.95` sets 95% opacity (adjustable between 0.0–1.0)

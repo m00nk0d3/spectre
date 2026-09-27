@@ -5,6 +5,15 @@ export interface AudioBufferOutput {
   buffer?: ArrayBuffer;
 }
 
+export interface AudioStreamChunk {
+  sequence: number;
+  data: ArrayBuffer;
+}
+
+export interface AudioStreamComplete {
+  finalSequence: number;
+}
+
 export interface WhisperTranscribeRequest {
   wavPath: string;
 }
