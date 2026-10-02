@@ -1,30 +1,36 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  AudioBufferOutput,
+  ConversationEvent,
+  ElectronAPI,
+} from "@/types/ipc";
 
-contextBridge.exposeInMainWorld("electron", {
+const electronApi: ElectronAPI = {
+  processConversation: (audio) =>
+    ipcRenderer.invoke("conversation:process", audio),
+  cancelConversation: () => ipcRenderer.invoke("conversation:cancel"),
+  onConversationEvent: (listener) => {
+    const wrappedListener = (
+      _event: Electron.IpcRendererEvent,
+      payload: ConversationEvent,
+    ) => listener(payload);
+    ipcRenderer.on("conversation:event", wrappedListener);
+    return () => {
+      ipcRenderer.removeListener("conversation:event", wrappedListener);
+    };
+  },
   notifySpeechStart: () => ipcRenderer.invoke("speech-start"),
   notifySpeechEnd: () => ipcRenderer.invoke("speech-end"),
-  getTTSAudio: (text: string): Promise<Buffer> => ipcRenderer.invoke("get-tts-audio", text),
+  getTTSAudio: (text) => ipcRenderer.invoke("get-tts-audio", text),
   pythonStatusRequest: () => ipcRenderer.invoke("python-status-request"),
   pythonPid: () => ipcRenderer.invoke("python-pid"),
-  createWavBuffer: async (float32Data: Float32Array): Promise<ArrayBuffer> => {
-    return ipcRenderer.invoke("wav-convert", float32Data);
-  },
-  writeWavFile: async (float32Data: Float32Array, path: string): Promise<void> => {
-    return ipcRenderer.invoke("wav-write-file", float32Data, path);
-  },
-  vadGetCollectedAudio: async (config?: { sampleRate?: number; channels?: number }) => {
-    return ipcRenderer.invoke("vad-get-collected-audio", config);
-  },
-  vadTriggerWavConversion: async (config?: { sampleRate?: number; channels?: number }) => {
-    return ipcRenderer.invoke("vad-trigger-wav-conversion", config);
-  },
-  vadCaptureStart: () => ipcRenderer.invoke("vad-capture-start"),
-  vadCaptureStop: () => ipcRenderer.invoke("vad-capture-stop"),
-  vadClearCollected: () => ipcRenderer.invoke("vad-clear-collected"),
-  vadStatus: () => ipcRenderer.invoke("vad-status"),
+  createWavBuffer: (float32Data) =>
+    ipcRenderer.invoke("wav-convert", float32Data),
+  writeWavFile: (float32Data, filePath) =>
+    ipcRenderer.invoke("wav-write-file", float32Data, filePath),
+  sendAudioBuffer: (float32Data: Float32Array | Buffer): Promise<AudioBufferOutput> => ipcRenderer.invoke("audio-buffer-send", float32Data),
+  whisperTranscribe: (wavPath) =>
+    ipcRenderer.invoke("whisper-transcribe", wavPath),
+};
 
-  sendAudioBuffer: async (float32Data: Float32Array | Buffer): Promise<{ success: boolean; buffer?: ArrayBuffer }> => ipcRenderer.invoke("audio-buffer-send", float32Data),
-  whisperTranscribe: async (wavPath: string): Promise<string> => ipcRenderer.invoke("whisper-transcribe", wavPath),
-  getTTSAudioStream: (text: string): Promise<ReadableStream<{ seq: number; data: ArrayBuffer }>> =>
-    ipcRenderer.invoke("get-tts-audio-stream", text),
-});
+contextBridge.exposeInMainWorld("electron", electronApi);

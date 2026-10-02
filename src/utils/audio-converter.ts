@@ -130,17 +130,6 @@ export async function writeWavFile(
   path: string,
 ): Promise<void> {
   const wavBuffer = createWavBuffer(float32Data);
-  import("fs").then((fs) => {
-    if (typeof fs.default === "function") {
-      fs.default.writeFileSync(path, Buffer.from(wavBuffer));
-    } else {
-      const fsDefault = fs.default;
-      if (fsDefault && typeof fsDefault.writeFileSync === "function") {
-        fsDefault.writeFileSync(path, Buffer.from(wavBuffer));
-      }
-    }
-  }).catch((err) => {
-    console.error("[WAV] Failed to write file:", err);
-    throw err;
-  });
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(path, Buffer.from(wavBuffer));
 }

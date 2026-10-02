@@ -30,7 +30,7 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
     expect(content).toMatch(/serverResult/i);
   });
 
-  it("should call local FastAPI endpoint http://127.0.0.1:1234/tts", async () => {
+  it("should call the dedicated local FastAPI TTS endpoint", async () => {
     if (!existsSync(MAIN_PATH)) {
       throw new Error("src/main/main.ts not found");
     }
@@ -38,7 +38,7 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
     const content = readFileSync(MAIN_PATH, "utf8");
 
     // Check for local endpoint call (not external LM Studio)
-    expect(content).toMatch(/http:\/\/127\.0\.0\.1:1234\/tts/i);
+    expect(content).toMatch(/getTTSServerUrl\(\).*\/tts/i);
   });
 
   it("should POST with JSON body containing text and voice fields", async () => {
@@ -121,7 +121,7 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
     const content = readFileSync(scriptPath, "utf8");
 
     // Check for ready flag logic
-    expect(content).toMatch(/ready.*=.*true/i);
+    expect(content).toMatch(/ready\s*:\s*true/i);
   });
 
   it("should reject promise on Python server error", async () => {

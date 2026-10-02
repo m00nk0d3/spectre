@@ -2,7 +2,7 @@
   "name": "spectre",
   "version": "1.0.0",
   "description": "Local personal assistant with Digital Noir aesthetic - Electron + React + Three.js",
-  "main": "./src/main/main.ts",
+  "main": "./out/main/main.js",
   "author": {
     "name": "m00nk0d3",
     "email": "hello@m00nk0d3.dev"
@@ -14,11 +14,14 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "vite preview",
-    "build:electron": "electron-builder --linux AppImage deb",
+    "build:electron": "electron-builder --config electron-builder.jsonc --linux AppImage deb",
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint . --ext ts,tsx",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
+    "setup:python": "node scripts/setup-python-runtime.mjs",
+    "setup:whisper": "node scripts/setup-whisper-runtime.mjs",
+    "setup:runtime": "npm run setup:python && npm run setup:whisper",
     "validate-hyprland": "node scripts/validate-hyprland.ts"
   },
   "dependencies": {
@@ -34,9 +37,9 @@
     "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.70.1",
     "@vitejs/plugin-react": "^4.3.3",
-    "electron": "^33.2.0",
+    "electron": "^44.4.5",
     "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
+    "electron-vite": "^5.0.0",
     "eslint": "^8.57.0",
     "react-dom": "^18.3.1",
     "three": "^0.169.0",

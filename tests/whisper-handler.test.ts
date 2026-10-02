@@ -94,8 +94,10 @@ describe("Issue #13: Whisper.cpp Local STT Handler - Organization, Types & Secur
     const whisperPath = path.join(PROJECT_ROOT, "src/main/whisper.ts");
     const content = readFileSync(whisperPath, "utf8");
 
-    // Should call sanitizeShellArgument with path.normalize(modelPath)
-    expect(content).toMatch(/sanitizeShellArgument.*path\.normalize.*modelPath/);
+    // The selected custom or managed model path must be normalized.
+    expect(content).toMatch(
+      /sanitizeShellArgument[\s\S]*path\.normalize\(resolvedModelPath\)/,
+    );
   });
 
   // === FUNCTIONAL TESTS ===

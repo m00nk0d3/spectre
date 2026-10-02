@@ -4,9 +4,12 @@ node_modules/
 # Build output
 dist/
 build/
+release/
 
 # Electron files
 out/
+.electron-env
+.sandcastle/
 
 # Environment variables
 .env
@@ -24,6 +27,8 @@ Thumbs.db
 
 # Cache
 .cache/
+__pycache__/
+*.py[cod]
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -1,12 +1,10 @@
 /// <reference types="vite/client" />
 
-interface ImportMetaEnv {
-  readonly [key: string]: string;
+declare global {
+  interface Window {
+    electron: import("@/types/ipc").ElectronAPI;
+  }
 }
 
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-  readonly cwd: string;
-}
-
-declare global { interface ElectronAPI { sendAudioBuffer(buffer: Float32Array | Buffer): Promise<{ success: boolean; buffer?: ArrayBuffer }>; } interface Window { electron?: ElectronAPI; }; /* type for window.electron */ }
+// window.electron.sendAudioBuffer accepts Float32Array | Buffer via ElectronAPI.
+export {};
