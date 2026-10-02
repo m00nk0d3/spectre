@@ -4,10 +4,14 @@ import path from "path";
 
 const PROJECT_ROOT = process.cwd();
 
-describe("Issue #15: Injeção de Persona e Restrições de Idioma", () => {
+describe("Issue #15: Persona and language constraints", () => {
   const mainPath = path.join(PROJECT_ROOT, "src/main/main.ts");
+  const contextPath = path.join(
+    PROJECT_ROOT,
+    "src/ai/messages/context.ts",
+  );
+  const readSystemPrompt = () => readFileSync(contextPath, "utf8");
 
-  // AC-01: Restrição Linguística Absoluta - 100% Português nas respostas
   it("AC-01: should import CONTEXT_MESSAGES from @/ai/messages/context", () => {
     if (!existsSync(mainPath)) {
       throw new Error("src/main/main.ts not found");
@@ -31,27 +35,25 @@ describe("Issue #15: Injeção de Persona e Restrições de Idioma", () => {
     expect(content).toMatch(/\[AI-COMMUNICATIONS\].*Context messages initialized/i);
   });
 
-  it("AC-01: System prompt should contain strict Portuguese language requirement", () => {
+  it("AC-01: System prompt should contain strict US English requirement", () => {
     if (!existsSync(mainPath)) {
       throw new Error("src/main/main.ts not found");
     }
 
-    const content = readFileSync(mainPath, "utf8");
+    const content = readSystemPrompt();
 
-    // ACCEPTANCE CRITERIA AC-01: System prompt must require 100% Portuguese
-    expect(content).toMatch(/IDIOMA ESTRITO|Português/i);
+    expect(content).toMatch(/US ENGLISH ONLY/i);
   });
 
-  // AC-02: Sem Formatação Markdown - Zero Markdown for TTS natural synthesis
   it("AC-02: System prompt should contain zero markdown formatting prohibition", () => {
     if (!existsSync(mainPath)) {
       throw new Error("src/main/main.ts not found");
     }
 
-    const content = readFileSync(mainPath, "utf8");
+    const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-02: System prompt must prohibit Markdown (asterisks, hashtags, lists)
-    expect(content).toMatch(/FORMATAÇÃO ZERO|Markdown|não use/i);
+    expect(content).toMatch(/ZERO MARKDOWN|Markdown/i);
   });
 
   it("AC-02: System prompt should require plain text for TTS", () => {
@@ -59,22 +61,21 @@ describe("Issue #15: Injeção de Persona e Restrições de Idioma", () => {
       throw new Error("src/main/main.ts not found");
     }
 
-    const content = readFileSync(mainPath, "utf8");
+    const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-02: Response must be plain text without formatting elements
-    expect(content).toMatch(/texto puro|plain.*text|síntese de voz/i);
+    expect(content).toMatch(/plain.*text|speech/i);
   });
 
-  // AC-03: Persona "Amigo Profissional" - Friendly but professional tone
-  it("AC-03: System prompt should define friendly-professional persona", () => {
+  it("AC-03: System prompt should define the butler persona", () => {
     if (!existsSync(mainPath)) {
       throw new Error("src/main/main.ts not found");
     }
 
-    const content = readFileSync(mainPath, "utf8");
+    const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-03: System prompt must define friendly-but-professional tone
-    expect(content).toMatch(/PERSONA AMIGO-PROFISIONAL|amigo.*profissional/i);
+    expect(content).toMatch(/DISCREET BUTLER/i);
   });
 
   it("AC-03: System prompt should encourage informal humor with professional respect", () => {
@@ -82,10 +83,10 @@ describe("Issue #15: Injeção de Persona e Restrições de Idioma", () => {
       throw new Error("src/main/main.ts not found");
     }
 
-    const content = readFileSync(mainPath, "utf8");
+    const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-03: Balance between friendly informal tone and professional respect
-    expect(content).toMatch(/bom senso de humor|humor/i);
+    expect(content).toMatch(/humor/i);
   });
 
   it("AC-03: System prompt should avoid robotic language", () => {
@@ -93,9 +94,9 @@ describe("Issue #15: Injeção de Persona e Restrições de Idioma", () => {
       throw new Error("src/main/main.ts not found");
     }
 
-    const content = readFileSync(mainPath, "utf8");
+    const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-03: Response must be conversational, not robotic
-    expect(content).toMatch(/conversacional|não seja robótico/i);
+    expect(content).toMatch(/conversational|not robotic/i);
   });
 });

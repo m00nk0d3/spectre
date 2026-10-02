@@ -12,8 +12,8 @@ import soundfile as sf
 import torch
 
 
-LANG_CODE = os.environ.get("KOKORO_LANG_CODE", "p")
-DEFAULT_VOICE = os.environ.get("TTS_VOICE", "pf_dora")
+LANG_CODE = os.environ.get("KOKORO_LANG_CODE", "a")
+DEFAULT_VOICE = os.environ.get("TTS_VOICE", "am_michael")
 SAMPLE_RATE = 24000
 
 pipeline: KPipeline | None = None
@@ -67,10 +67,10 @@ def transcribe_audio(audio: bytes) -> str:
 
     segments, _info = whisper_model.transcribe(
         BytesIO(audio),
-        language="pt",
+        language="en",
         beam_size=5,
         initial_prompt=(
-            "Transcrição fiel em português europeu. Assistente: Spectre."
+            "Accurate US English transcription. Assistant name: Spectre."
         ),
         hotwords=(
             "Spectre, LM Studio, Kokoro, Whisper, AppImage, Linux, "

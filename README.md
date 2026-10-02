@@ -1,6 +1,6 @@
 # SPECTRE
 
-Local Portuguese voice assistant for Electron with a transparent, audio-reactive
+Local US English voice assistant for Electron with a transparent, audio-reactive
 Digital Noir orb.
 
 ## Runtime pipeline
@@ -13,13 +13,13 @@ Digital Noir orb.
 3. Main writes a temporary WAV under Electron's `userData` directory,
    transcribes it with Whisper.cpp, then removes it in `finally`.
 4. LM Studio streams `qwen/qwen3.5-9b` from
-   `http://127.0.0.1:1234/v1/chat/completions` with the Portuguese
+   `http://127.0.0.1:1234/v1/chat/completions` with the US English
    `CONTEXT_MESSAGES`.
 5. `SentenceChunker` emits grammatical `.?!;:` boundaries, strategic commas,
    and max-length word-boundary chunks without dropping punctuation.
 6. Each chunk is synthesized serially by local Kokoro at
-   `http://127.0.0.1:1235/tts`. Kokoro defaults to Brazilian Portuguese
-   (`lang_code=p`) and `pf_dora`.
+   `http://127.0.0.1:1235/tts`. Kokoro defaults to US English
+   (`lang_code=a`) and the male `am_michael` voice.
 7. The renderer reorders chunks by sequence and schedules decoded WAV buffers
    continuously through one `AnalyserNode`. FFT amplitude, bass, and treble
    drive the R3F shader every frame and decay smoothly to its idle motion.
@@ -48,7 +48,7 @@ Haswell/AVX2 GGML backend when the CPU supports it and otherwise uses the
 portable x64 backend for legacy whisper.cpp calls. Live conversations use a
 warm CTranslate2 int8 model in the local Python service to avoid loading a new
 model for every utterance. Set `WHISPER_BACKEND_PATH` to choose another
-whisper.cpp backend. Its decoding prompt targets European Portuguese and its
+whisper.cpp backend. Its decoding prompt targets US English and its
 hotword list preserves common Spectre stack names.
 
 Start LM Studio on port 1234 with `qwen/qwen3.5-9b` loaded, then run:

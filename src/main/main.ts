@@ -144,7 +144,7 @@ function registerIpcHandlers(): void {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          voice: process.env.TTS_VOICE || "pf_dora",
+          voice: process.env.TTS_VOICE || "am_michael",
           speed: Number(process.env.TTS_SPEED) || 1.1,
           response_format: "wav",
         }),
@@ -228,7 +228,7 @@ app.whenReady().then(async () => {
     `[AI-COMMUNICATIONS] Context messages initialized: ${CONTEXT_MESSAGES.length}`,
   );
   console.log(
-    "[AI-COMMUNICATIONS] IDIOMA ESTRITO em português; FORMATAÇÃO ZERO sem Markdown, texto puro para síntese de voz; PERSONA AMIGO-PROFISSIONAL, conversacional, com bom senso de humor e respeito, não seja robótico.",
+    "[AI-COMMUNICATIONS] US ENGLISH ONLY; ZERO MARKDOWN, plain text for speech; DISCREET BUTLER persona with humor, conversational and not robotic.",
   );
 
   try {

@@ -33,7 +33,7 @@ For each speech segment it:
 
 1. writes a unique WAV below `app.getPath("userData")`;
 2. invokes the existing Whisper.cpp handler;
-3. streams LM Studio using the Portuguese system context and default
+3. streams LM Studio using the US English system context and default
    `qwen/qwen3.5-9b`;
 4. feeds every token to `SentenceChunker`;
 5. serializes Kokoro `/tts` calls and emits numbered WAV events;
@@ -54,8 +54,8 @@ Kokoro fetches; stale requests cannot emit further audio.
 - oversized text at the nearest preceding word boundary;
 - remaining text on stream completion.
 
-Kokoro is kept hot by the FastAPI lifespan. It uses `KPipeline(lang_code="p")`
-by default, selects CUDA when available, defaults to `pf_dora`, and returns
+Kokoro is kept hot by the FastAPI lifespan. It uses `KPipeline(lang_code="a")`
+by default, selects CUDA when available, defaults to `am_michael`, and returns
 24 kHz PCM WAV from port 1235.
 
 ## Visual design

@@ -115,7 +115,7 @@ export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: stri
   const sanitizedWavPath = sanitizeShellArgument(wavPath);
   const backendPath = getWhisperBackend(managed);
 
-  const cmd = `"${whisperPath}" -f "${sanitizedWavPath}" -m "${sanitizedModelPath}" -l pt --prompt "Transcrição em português brasileiro. Assistente: Spectre." --suppress-nst --no-gpu --no-timestamps`;
+  const cmd = `"${whisperPath}" -f "${sanitizedWavPath}" -m "${sanitizedModelPath}" -l en --prompt "Accurate US English transcription. Assistant name: Spectre." --suppress-nst --no-gpu --no-timestamps`;
 
   console.log(`[WHISPER] Backend: ${path.basename(backendPath)}`);
   console.log("[WHISPER] Executing:", cmd);

@@ -139,12 +139,12 @@ function ShaderOrb({ playbackQueue }: ShaderOrbProps) {
 }
 
 const STATE_LABELS: Record<ConversationState, string> = {
-  idle: "Pronto",
-  listening: "Ouvindo",
-  transcribing: "Transcrevendo",
-  thinking: "Pensando",
-  speaking: "Falando",
-  error: "Erro",
+  idle: "Ready",
+  listening: "Listening",
+  transcribing: "Transcribing",
+  thinking: "Thinking",
+  speaking: "Speaking",
+  error: "Error",
 };
 
 export default function App() {
@@ -157,7 +157,7 @@ export default function App() {
   useEffect(() => {
     if (!window.electron) {
       setState("error");
-      setError("Ponte do Electron indisponível");
+      setError("Electron bridge unavailable");
       return;
     }
 
@@ -201,14 +201,14 @@ export default function App() {
       },
       onError: (vadError) => {
         setState("error");
-        setError(`Microfone: ${vadError.message}`);
+        setError(`Microphone: ${vadError.message}`);
       },
     });
 
     void vad.start().catch((vadError: unknown) => {
       setState("error");
       setError(
-        `Não foi possível iniciar o microfone: ${
+        `Could not start the microphone: ${
           vadError instanceof Error ? vadError.message : String(vadError)
         }`,
       );
@@ -225,7 +225,7 @@ export default function App() {
 
   return (
     <main className="spectre-shell">
-      <section className="orb-stage" aria-label="Orbe do Spectre">
+      <section className="orb-stage" aria-label="Spectre orb">
         <Canvas
           className="orb-canvas"
           camera={{ position: [0, 0, 3.15], fov: 42 }}
@@ -241,16 +241,16 @@ export default function App() {
         </div>
       </section>
       <section className="transcript-view" aria-live="polite">
-        <header>Transcrição</header>
+        <header>Transcript</header>
         <div className="transcript-content">
           {!transcript && !reply && !error && (
             <p className="transcript-placeholder">
-              Fale com o Spectre para iniciar uma conversa.
+              Talk to Spectre to start a conversation.
             </p>
           )}
           {transcript && (
             <article className="transcript-entry transcript-user">
-              <span>Você</span>
+              <span>You</span>
               <p>{transcript}</p>
             </article>
           )}
