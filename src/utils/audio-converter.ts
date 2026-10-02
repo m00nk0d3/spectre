@@ -7,117 +7,44 @@ export function createWavBuffer(
   sampleRate: number = 16000,
   channels: number = 1,
 ): ArrayBuffer {
-  // Clamp valores fora do range [-1, 1] para evitar clipping
-  const clampedData = Array.from(float32Data).map((v) => Math.max(-1, Math.min(1, v)));
-
-  // Calcular tamanhos de header e arquivo total
-  // Para dados interleaved: N amostras × canais × 2 bytes = tamanho em bytes
-  const numSamples = (clampedData.length / channels) | 0;
-  const dataSizeBytes = numSamples * channels * 2; // 2 bytes por amostra por canal
-  const fileSize = 44 + dataSizeBytes; // Header fixo de 44 bytes + dados
-
-  // Criar buffer do cabeçalho RIFF/WAV com espaço para dados (tamanho dinâmico)
-  const headerBuffer = new Uint8Array(fileSize);
-  let offset = 0;
-
-  // === RIFF Chunk Identifier ===
-  headerBuffer[offset++] = 0x46; // 'F'
-  headerBuffer[offset++] = 0x46; // 'F'
-  headerBuffer[offset++] = 0x49; // 'I'
-  headerBuffer[offset++] = 0x52; // 'R'
-
-  // Offset 4-7: File size - 8 (little-endian)
-  const fileLow = fileSize & 0xff;
-  const fileMid = (fileSize >> 8) & 0xff;
-  const fileHi = (fileSize >> 16) & 0xff;
-  const fileTop = (fileSize >> 24) & 0xff;
-  headerBuffer[offset++] = fileLow;
-  headerBuffer[offset++] = fileMid;
-  headerBuffer[offset++] = fileHi;
-  headerBuffer[offset++] = fileTop;
-
-  // === WAVE Identifier ===
-  headerBuffer[offset++] = 0x45; // 'E'
-  headerBuffer[offset++] = 0x56; // 'V'
-  headerBuffer[offset++] = 0x41; // 'A'
-  headerBuffer[offset++] = 0x57; // 'W'
-
-  // === fmt Subchunk Identifier === (little-endian: f-m-t-space)
-  headerBuffer[offset++] = 0x66; // 'f'
-  headerBuffer[offset++] = 0x6D; // 'm'
-  headerBuffer[offset++] = 0x74; // 't'
-  headerBuffer[offset++] = 0x20; // space
-
-  // === fmt Subchunk Size ===
-  headerBuffer[offset++] = 0x10; // low byte of 16
-  headerBuffer[offset++] = 0x00; // high byte of 16
-
-  // === Audio Format ===
-  headerBuffer[offset++] = 0x01; // low byte of 1
-  headerBuffer[offset++] = 0x00; // high byte of 1
-
-  // === Number of Channels ===
-  headerBuffer[offset++] = channels & 0xff;
-
-  // === Sample Rate ===
-  const srLow = sampleRate & 0xff;
-  const srMid = (sampleRate >> 8) & 0xff;
-  const srHi = (sampleRate >> 16) & 0xff;
-  const srTop = (sampleRate >> 24) & 0xff;
-  headerBuffer[offset++] = srLow;
-  headerBuffer[offset++] = srMid;
-  headerBuffer[offset++] = srHi;
-  headerBuffer[offset++] = srTop;
-
-  // === Byte Rate ===
-  const byteRate = sampleRate * channels * 16 / 8;
-  const brLow = byteRate & 0xff;
-  const brMid = (byteRate >> 8) & 0xff;
-  const brHi = (byteRate >> 16) & 0xff;
-  const brTop = (byteRate >> 24) & 0xff;
-  headerBuffer[offset++] = brLow;
-  headerBuffer[offset++] = brMid;
-  headerBuffer[offset++] = brHi;
-  headerBuffer[offset++] = brTop;
-
-  // === Block Align ===
-  const blockAlign = channels * 2;
-  headerBuffer[offset++] = blockAlign & 0xff;
-
-  // === Bits Per Sample ===
-  headerBuffer[offset++] = 0x10; // low byte of 16
-  headerBuffer[offset++] = 0x00; // high byte of 16
-
-  // === Data Subchunk Identifier === (little-endian: d-a-t-a)
-  headerBuffer[offset++] = 0x64; // 'd'
-  headerBuffer[offset++] = 0x61; // 'a'
-  headerBuffer[offset++] = 0x74; // 't'
-  headerBuffer[offset++] = 0x61; // 'a'
-
-  // === Data Size (in bytes) ===
-  const dataLow = dataSizeBytes & 0xff;
-  const dataMid = (dataSizeBytes >> 8) & 0xff;
-  const dataHi = (dataSizeBytes >> 16) & 0xff;
-  const dataTop = (dataSizeBytes >> 24) & 0xff;
-  headerBuffer[offset++] = dataLow;
-  headerBuffer[offset++] = dataMid;
-  headerBuffer[offset++] = dataHi;
-  headerBuffer[offset++] = dataTop;
-
-  // Write audio data at offset 44 (after RIFF + WAVE + fmt subchunk + data identifier + data size)
-  let sampleIdx = 0;
-  while (sampleIdx < numSamples) {
-    const baseOffset = sampleIdx * channels;
-    for (let ch = 0; ch < channels; ch++) {
-      const val = clampedData[baseOffset + ch];
-      // Little-endian: low byte first, then high byte
-      headerBuffer[44 + baseOffset * 2 + ch * 2] = Math.round(val * 32767) & 0xff;
-      headerBuffer[45 + baseOffset * 2 + ch * 2] = (Math.round(val * 32767) >> 8) & 0xff;
-    }
-    sampleIdx++;
+  if (!Number.isInteger(sampleRate) || sampleRate <= 0) {
+    throw new Error("Sample rate must be a positive integer");
+  }
+  if (!Number.isInteger(channels) || channels <= 0) {
+    throw new Error("Channel count must be a positive integer");
   }
 
-  return headerBuffer.buffer as ArrayBuffer;
+  const sampleCount = Math.floor(float32Data.length / channels) * channels;
+  const dataSize = sampleCount * Int16Array.BYTES_PER_ELEMENT;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeAscii = (offset: number, text: string): void => {
+    for (let index = 0; index < text.length; index++) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  };
+
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * 2, true);
+  view.setUint16(32, channels * 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  for (let index = 0; index < sampleCount; index++) {
+    const sample = Math.max(-1, Math.min(1, float32Data[index]));
+    view.setInt16(44 + index * 2, Math.round(sample * 32767), true);
+  }
+
+  return buffer;
 }
 
 /**

@@ -101,15 +101,17 @@ describe("Issue #36: Fix Broken Electron Dev/Build Scripts", () => {
     expect(content).toMatch(/preload:\s*\[[^\]]*["\']src\/preload\/index\.ts["\'][^\]]*\]/);
   });
 
-  it("should not include build.output in electron.vite.config.ts", () => {
+  it("should emit a CommonJS preload that Electron can execute", () => {
     if (!existsSync(electronViteConfigPath)) {
       throw new Error("electron.vite.config.ts not found");
     }
 
     const content = readFileSync(electronViteConfigPath, "utf8");
 
-    // INF-002: build.rollupOptions.output not needed for electron-vite
-    expect(content).not.toMatch(/build:\s*\{[^}]*rollupOptions/i);
+    expect(content).toMatch(/preload:\s*\{[\s\S]*?format:\s*["']cjs["']/);
+    expect(content).toMatch(
+      /preload:\s*\{[\s\S]*?entryFileNames:\s*["']\[name\]\.cjs["']/,
+    );
   });
 
   it("should exclude worktrees from vitest", () => {

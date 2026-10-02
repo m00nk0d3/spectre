@@ -15,8 +15,8 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint32(0, true)).toBe(0x52494646); // "RIFF"
-      expect(bufferView.getUint32(8, true)).toBe(0x57415645); // "WAVE"
+      expect(bufferView.getUint32(0, true)).toBe(0x46464952); // "RIFF"
+      expect(bufferView.getUint32(8, true)).toBe(0x45564157); // "WAVE"
     });
 
     it("cria header fmt para PCM, 1 canal, 16-bit", () => {
@@ -25,16 +25,16 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       // Subchunk size at offset 16-19 - fmt é 16 bytes
-      expect(bufferView.getUint16(16, true)).toBe(16);
+      expect(bufferView.getUint32(16, true)).toBe(16);
 
-      // Audio format: 1 = PCM at offset 18-19 (little-endian)
-      expect(bufferView.getUint16(18, true)).toBe(1);
+      // Audio format: 1 = PCM at offset 20-21 (little-endian)
+      expect(bufferView.getUint16(20, true)).toBe(1);
 
-      // Num channels: 1 mono at offset 20
-      expect(bufferView.getUint8(20)).toBe(1);
+      // Num channels: 1 mono at offset 22-23
+      expect(bufferView.getUint16(22, true)).toBe(1);
 
-      // Sample rate: 16000 at offset 21-24 (little-endian) - WAV spec
-      expect(bufferView.getUint32(21, true)).toBe(16000);
+      // Sample rate: 16000 at offset 24-27 (little-endian)
+      expect(bufferView.getUint32(24, true)).toBe(16000);
     });
 
     it("cria header data com tamanho correto", () => {
@@ -42,12 +42,12 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      // Data subchunk at offset 32 ("data" identifier) - WAV spec (little-endian: d-a-t-a = [0x64, 0x61, 0x74, 0x61])
-      expect(bufferView.getUint32(32, true)).toBe(0x61746164); // "data" in little-endian
+      // Data subchunk at offset 36 ("data" identifier)
+      expect(bufferView.getUint32(36, true)).toBe(0x61746164);
 
-      // Data size: 4 samples * 1 channel * 2 bytes = 8 bytes at offset 36
+      // Data size: 4 samples * 1 channel * 2 bytes = 8 bytes at offset 40
       const expectedDataSize = 8;
-      expect(bufferView.getUint32(36, true)).toBe(expectedDataSize);
+      expect(bufferView.getUint32(40, true)).toBe(expectedDataSize);
     });
   });
 
@@ -108,8 +108,8 @@ describe("Issue #11: Conversor WAV", () => {
       expect(wavBuffer.byteLength).toBeGreaterThanOrEqual(44);
 
       const bufferView = new DataView(wavBuffer);
-      expect(bufferView.getUint32(0, true)).toBe(0x52494646); // "RIFF"
-      expect(bufferView.getUint32(8, true)).toBe(0x57415645); // "WAVE"
+      expect(bufferView.getUint32(0, true)).toBe(0x46464952); // "RIFF"
+      expect(bufferView.getUint32(8, true)).toBe(0x45564157); // "WAVE"
     });
 
     it("dados silenciosos (zeros) produzem buffer válido", () => {
@@ -117,7 +117,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getInt16(40, true)).toBe(0);
+      expect(bufferView.getInt16(44, true)).toBe(0);
     });
   });
 
@@ -128,7 +128,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint32(21, true)).toBe(16000); // WAV spec offset 21-24
+      expect(bufferView.getUint32(24, true)).toBe(16000);
     });
 
     it("cria buffer com sample rate customizado 44100", () => {
@@ -136,7 +136,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 44100);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint32(21, true)).toBe(44100);
+      expect(bufferView.getUint32(24, true)).toBe(44100);
     });
 
     it("cria buffer com sample rate customizado 48000", () => {
@@ -144,7 +144,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 48000);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint32(21, true)).toBe(48000);
+      expect(bufferView.getUint32(24, true)).toBe(48000);
     });
 
     it("cria buffer com sample rate customizado 22050", () => {
@@ -152,7 +152,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 22050);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint32(21, true)).toBe(22050);
+      expect(bufferView.getUint32(24, true)).toBe(22050);
     });
   });
 
@@ -228,7 +228,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint16(18, true)).toBe(1);
+      expect(bufferView.getUint16(20, true)).toBe(1);
     });
 
     it("bits per sample é 16 no header", () => {
@@ -236,8 +236,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData);
       const bufferView = new DataView(wavBuffer);
 
-      // Bits per sample: offset 38, should be 16 (0x10) for PCM int16
-      expect(bufferView.getUint8(30)).toBe(16);
+      expect(bufferView.getUint16(34, true)).toBe(16);
     });
 
     it("byte rate é calculado corretamente para 1 canal", () => {
@@ -245,7 +244,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 16000, 1);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint32(25, true)).toBe(32000); // Byte rate: 16000 * 1 * 16 / 8 = 32000
+      expect(bufferView.getUint32(28, true)).toBe(32000);
     });
 
     it("byte rate é calculado corretamente para 2 canais", () => {
@@ -253,7 +252,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 16000, 2);
       const bufferView = new DataView(wavBuffer);
 
-      expect(bufferView.getUint32(25, true)).toBe(64000); // Byte rate: 16000 * 2 * 16 / 8 = 64000
+      expect(bufferView.getUint32(28, true)).toBe(64000);
     });
 
     it("verifica que valores stereo são corretamente escritos nos dados interleaved", () => {
@@ -305,8 +304,8 @@ describe("Issue #11: Conversor WAV", () => {
       const monoView = new DataView(monoBuffer);
       const stereoView = new DataView(stereoBuffer);
 
-      expect(monoView.getUint8(29)).toBe(2); // Block align: channels * bitsPerSample / 8 = 1 * 16 / 8 = 2
-      expect(stereoView.getUint8(29)).toBe(4); // Block align: channels * bitsPerSample / 8 = 2 * 16 / 8 = 4
+      expect(monoView.getUint16(32, true)).toBe(2);
+      expect(stereoView.getUint16(32, true)).toBe(4);
     });
 
     it("verifica estrutura RIFF/WAV para compatibilidade com leitores padrão", () => {
@@ -316,22 +315,22 @@ describe("Issue #11: Conversor WAV", () => {
       const bufferView = new DataView(wavBuffer);
 
       // RIFF chunk ID at offset 0 (little-endian: R-I-F-F = [0x46, 0x49, 0x46, 0x46])
-      expect(bufferView.getUint32(0, true)).toBe(0x52494646); // "RIFF"
+      expect(bufferView.getUint32(0, true)).toBe(0x46464952); // "RIFF"
 
       // WAVE format at offset 8 (little-endian: W-A-V-E = [0x45, 0x56, 0x41, 0x57])
-      expect(bufferView.getUint32(8, true)).toBe(0x57415645); // "WAVE"
+      expect(bufferView.getUint32(8, true)).toBe(0x45564157); // "WAVE"
 
       // fmt subchunk identifier at offset 12 (little-endian: f-m-t-space = [0x66, 0x6D, 0x74, 0x20])
       expect(bufferView.getUint32(12, true)).toBe(0x20746D66);
 
       // fmt subchunk size at offset 16 (16 bytes for PCM header)
-      expect(bufferView.getUint16(16, true)).toBe(16);
+      expect(bufferView.getUint32(16, true)).toBe(16);
 
-      // Audio format 1 (PCM) at offset 18
-      expect(bufferView.getUint16(18, true)).toBe(1);
+      // Audio format 1 (PCM) at offset 20
+      expect(bufferView.getUint16(20, true)).toBe(1);
 
-      // Data subchunk identifier at offset 32 (little-endian: d-a-t-a = [0x64, 0x61, 0x74, 0x61])
-      expect(bufferView.getUint32(32, true)).toBe(0x61746164);
+      // Data subchunk identifier at offset 36
+      expect(bufferView.getUint32(36, true)).toBe(0x61746164);
 
       // Audio data starts at offset 44 (not 40) - critical fix for WAV playback compatibility
       const firstSample = bufferView.getInt16(44, true);
@@ -346,7 +345,7 @@ describe("Issue #11: Conversor WAV", () => {
       const wavBuffer = createWavBuffer(testData, 16000, 4); // 4 channels
 
       const bufferView = new DataView(wavBuffer);
-      expect(bufferView.getUint8(20)).toBe(4);
+      expect(bufferView.getUint16(22, true)).toBe(4);
     });
 
     it("usa Int16Array em vez de Float32 para dados", () => {
@@ -399,8 +398,8 @@ describe("Issue #11: Conversor WAV", () => {
       const result = createWavBuffer(testData);
 
       const bufferView = new DataView(result);
-      expect(bufferView.getUint32(21, true)).toBe(16000); // sample rate
-      expect(bufferView.getUint8(20)).toBe(1); // channels
+      expect(bufferView.getUint32(24, true)).toBe(16000);
+      expect(bufferView.getUint16(22, true)).toBe(1);
     });
 
     it("cria buffer com todos os parâmetros explícitos", () => {
@@ -408,8 +407,8 @@ describe("Issue #11: Conversor WAV", () => {
       const result = createWavBuffer(testData, 44100, 2);
 
       const bufferView = new DataView(result);
-      expect(bufferView.getUint32(21, true)).toBe(44100); // sample rate
-      expect(bufferView.getUint8(20)).toBe(2); // channels
+      expect(bufferView.getUint32(24, true)).toBe(44100);
+      expect(bufferView.getUint16(22, true)).toBe(2);
     });
   });
 });

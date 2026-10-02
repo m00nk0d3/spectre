@@ -29,9 +29,15 @@ export function createVad(config: VadConfig = {}) {
     if (vad) return Promise.resolve(vad);
     if (initialization) return initialization;
 
+    const assetBaseUrl =
+      window.location.protocol === "file:"
+        ? "spectre://renderer/"
+        : new URL("./", window.location.href).href;
     initialization = MicVAD.new({
       startOnLoad: false,
       processorType: "AudioWorklet",
+      baseAssetPath: assetBaseUrl,
+      onnxWASMBasePath: assetBaseUrl,
       redemptionMs: silenceTimeoutMs,
       onSpeechStart: async () => {
         state.isSpeaking = true;
@@ -41,6 +47,13 @@ export function createVad(config: VadConfig = {}) {
       onSpeechEnd: async (audio) => {
         state.isSpeaking = false;
         state.lastSpeechTime = Date.now();
+        const peak = audio.reduce(
+          (maximum, sample) => Math.max(maximum, Math.abs(sample)),
+          0,
+        );
+        console.info(
+          `[VAD] Captured ${(audio.length / 16_000).toFixed(2)}s, peak ${peak.toFixed(3)}`,
+        );
         await config.onSpeechEnd?.(audio);
       },
       onVADMisfire: () => {

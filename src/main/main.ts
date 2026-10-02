@@ -1,5 +1,13 @@
-import { app, BrowserWindow, ipcMain, session } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  net,
+  protocol,
+  session,
+} from "electron";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   getTTSServerUrl,
   spawnPythonServer,
@@ -12,6 +20,20 @@ import { streamTTSAudio } from "./stream-tts";
 import { transcribeWithWhisperCpp } from "./whisper";
 
 const WINDOW_MANAGER_CLASS = process.env.WINDOW_MANAGER_CLASS || "spectre";
+const RENDERER_SCHEME = "spectre";
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: RENDERER_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 
 let mainWindow: BrowserWindow | null = null;
 let pythonPid: number | null = null;
@@ -31,7 +53,7 @@ function createWindow(): void {
     alwaysOnTop: true,
     backgroundColor: "#00000000",
     webPreferences: {
-      preload: path.join(__dirname, "../preload/index.mjs"),
+      preload: path.join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       audioContext: true,
@@ -39,12 +61,43 @@ function createWindow(): void {
   } as Electron.BrowserWindowConstructorOptions);
 
   Object.assign(mainWindow, { windowClassName: WINDOW_MANAGER_CLASS });
+  mainWindow.webContents.on("console-message", (details) => {
+    console.log(`[RENDERER:${details.level}] ${details.message}`);
+  });
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL) => {
+      console.error(
+        `[RENDERER] Failed to load ${validatedURL}: ${errorCode} ${errorDescription}`,
+      );
+    },
+  );
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
     void mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
+}
+
+function registerRendererProtocol(): void {
+  const rendererRoot = path.resolve(__dirname, "../renderer");
+  protocol.handle(RENDERER_SCHEME, (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== "renderer") {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const filePath = path.resolve(rendererRoot, `.${decodeURIComponent(url.pathname)}`);
+    if (
+      filePath !== rendererRoot &&
+      !filePath.startsWith(`${rendererRoot}${path.sep}`)
+    ) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
 }
 
 function sendConversationEvent(event: ConversationEvent): void {
@@ -157,6 +210,7 @@ function registerIpcHandlers(): void {
 }
 
 app.whenReady().then(async () => {
+  registerRendererProtocol();
   session.defaultSession.setPermissionRequestHandler(
     (_webContents, permission, callback) => {
       callback(permission === "media");
