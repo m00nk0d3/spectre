@@ -23,6 +23,9 @@ Digital Noir orb.
 7. The renderer reorders chunks by sequence and schedules decoded WAV buffers
    continuously through one `AnalyserNode`. FFT amplitude, bass, and treble
    drive the R3F shader every frame and decay smoothly to its idle motion.
+8. MicVAD pauses before assistant audio is scheduled and resumes 350 ms after
+   the playback queue becomes idle, preventing speaker output from cancelling
+   or starting another conversation.
 
 Starting a new speech segment cancels the current LM Studio/Kokoro work and
 stops queued playback. Conversation state, transcript, reply, audio, completion,

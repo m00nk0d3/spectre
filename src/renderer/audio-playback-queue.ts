@@ -5,6 +5,12 @@ export interface AudioAnalysis {
   isPlaying: boolean;
 }
 
+export interface AudioPlaybackLifecycle {
+  playbackTailMs?: number;
+  onPlaybackStart?: () => void | Promise<void>;
+  onPlaybackIdle?: () => void;
+}
+
 export class SequenceBuffer<T> {
   private expectedSequence = 0;
   private readonly pending = new Map<number, T>();
@@ -39,8 +45,14 @@ export class AudioPlaybackQueue {
   private decodeChain = Promise.resolve();
   private nextStartTime = 0;
   private generation = 0;
+  private pendingSchedules = 0;
+  private playbackActive = false;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(context = new AudioContext({ latencyHint: "interactive" })) {
+  constructor(
+    context = new AudioContext({ latencyHint: "interactive" }),
+    private readonly lifecycle: AudioPlaybackLifecycle = {},
+  ) {
     this.context = context;
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 512;
@@ -53,6 +65,8 @@ export class AudioPlaybackQueue {
     const ready = this.sequenceBuffer.push(sequence, audio);
     const generation = this.generation;
     for (const chunk of ready) {
+      this.pendingSchedules += 1;
+      this.cancelIdle();
       this.decodeChain = this.decodeChain.then(() =>
         this.schedule(chunk, generation),
       );
@@ -64,29 +78,79 @@ export class AudioPlaybackQueue {
     audio: ArrayBuffer,
     generation: number,
   ): Promise<void> {
-    if (generation !== this.generation) return;
-    if (this.context.state === "suspended") await this.context.resume();
+    try {
+      if (!(await this.activatePlayback(generation))) return;
+      if (this.context.state === "suspended") await this.context.resume();
 
-    const decoded = await this.context.decodeAudioData(audio.slice(0));
-    if (generation !== this.generation) return;
-    const source = this.context.createBufferSource();
-    source.buffer = decoded;
-    source.connect(this.analyser);
+      const decoded = await this.context.decodeAudioData(audio.slice(0));
+      if (generation !== this.generation) return;
+      const source = this.context.createBufferSource();
+      source.buffer = decoded;
+      source.connect(this.analyser);
 
-    const startTime = Math.max(
-      this.context.currentTime + 0.015,
-      this.nextStartTime,
-    );
-    this.nextStartTime = startTime + decoded.duration;
-    this.sources.add(source);
-    source.onended = () => {
-      source.disconnect();
-      this.sources.delete(source);
-      if (this.sources.size === 0) {
-        this.nextStartTime = this.context.currentTime;
+      const startTime = Math.max(
+        this.context.currentTime + 0.015,
+        this.nextStartTime,
+      );
+      this.nextStartTime = startTime + decoded.duration;
+      this.sources.add(source);
+      source.onended = () => {
+        source.disconnect();
+        this.sources.delete(source);
+        if (this.sources.size === 0) {
+          this.nextStartTime = this.context.currentTime;
+        }
+        this.scheduleIdle(generation);
+      };
+      source.start(startTime);
+    } finally {
+      if (generation === this.generation) {
+        this.pendingSchedules = Math.max(0, this.pendingSchedules - 1);
+        this.scheduleIdle(generation);
       }
-    };
-    source.start(startTime);
+    }
+  }
+
+  private async activatePlayback(generation: number): Promise<boolean> {
+    if (generation !== this.generation) return false;
+    this.cancelIdle();
+    if (!this.playbackActive) {
+      this.playbackActive = true;
+      await this.lifecycle.onPlaybackStart?.();
+    }
+    return generation === this.generation;
+  }
+
+  private scheduleIdle(generation: number): void {
+    if (
+      generation !== this.generation ||
+      !this.playbackActive ||
+      this.pendingSchedules > 0 ||
+      this.sources.size > 0 ||
+      this.idleTimer
+    ) {
+      return;
+    }
+
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (
+        generation !== this.generation ||
+        this.pendingSchedules > 0 ||
+        this.sources.size > 0
+      ) {
+        return;
+      }
+      this.playbackActive = false;
+      this.lifecycle.onPlaybackIdle?.();
+    }, this.lifecycle.playbackTailMs ?? 350);
+  }
+
+  private cancelIdle(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
   }
 
   analyze(): AudioAnalysis {
@@ -116,6 +180,8 @@ export class AudioPlaybackQueue {
   reset(): void {
     this.generation += 1;
     this.sequenceBuffer.reset();
+    this.pendingSchedules = 0;
+    this.cancelIdle();
     for (const source of this.sources) {
       source.onended = null;
       source.stop();
@@ -123,10 +189,21 @@ export class AudioPlaybackQueue {
     }
     this.sources.clear();
     this.nextStartTime = this.context.currentTime;
+    this.scheduleIdle(this.generation);
   }
 
   async close(): Promise<void> {
-    this.reset();
+    this.generation += 1;
+    this.sequenceBuffer.reset();
+    this.pendingSchedules = 0;
+    this.cancelIdle();
+    for (const source of this.sources) {
+      source.onended = null;
+      source.stop();
+      source.disconnect();
+    }
+    this.sources.clear();
+    this.playbackActive = false;
     await this.decodeChain;
     this.analyser.disconnect();
     if (this.context.state !== "closed") await this.context.close();

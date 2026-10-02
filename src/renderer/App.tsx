@@ -161,7 +161,24 @@ export default function App() {
       return;
     }
 
-    const queue = new AudioPlaybackQueue();
+    let vad: ReturnType<typeof createVad> | null = null;
+    const reportMicrophoneError = (vadError: unknown) => {
+      setState("error");
+      setError(
+        `Microphone: ${
+          vadError instanceof Error ? vadError.message : String(vadError)
+        }`,
+      );
+    };
+    const queue = new AudioPlaybackQueue(undefined, {
+      playbackTailMs: 350,
+      onPlaybackStart: async () => {
+        await vad?.stop();
+      },
+      onPlaybackIdle: () => {
+        void vad?.start().catch(reportMicrophoneError);
+      },
+    });
     playbackQueue.current = queue;
     const removeConversationListener = window.electron.onConversationEvent(
       (event) => {
@@ -185,7 +202,7 @@ export default function App() {
       },
     );
 
-    const vad = createVad({
+    vad = createVad({
       onSpeechStart: async () => {
         queue.reset();
         setTranscript("");
@@ -200,19 +217,11 @@ export default function App() {
         await window.electron.processConversation(audio);
       },
       onError: (vadError) => {
-        setState("error");
-        setError(`Microphone: ${vadError.message}`);
+        reportMicrophoneError(vadError);
       },
     });
 
-    void vad.start().catch((vadError: unknown) => {
-      setState("error");
-      setError(
-        `Could not start the microphone: ${
-          vadError instanceof Error ? vadError.message : String(vadError)
-        }`,
-      );
-    });
+    void vad.start().catch(reportMicrophoneError);
 
     return () => {
       removeConversationListener();
