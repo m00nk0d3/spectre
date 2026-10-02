@@ -1,0 +1,144 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { streamLMStudioResponse } from "../src/main/lm-studio";
+
+function streamingResponse(events: object[]): Response {
+  const body = events
+    .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+    .join("")
+    .concat("data: [DONE]\n\n");
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+function toolSelectionResponse(): Response {
+  return Response.json({
+    choices: [{
+      message: {
+        role: "assistant",
+        content: "",
+        tool_calls: [{
+          id: "call_1",
+          type: "function",
+          function: {
+            name: "get_current_datetime",
+            arguments: '{"timezone":"UTC"}',
+          },
+        }],
+      },
+    }],
+  });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("LM Studio tool calling", () => {
+  it("routes known time intent directly to the local tool", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(streamingResponse([
+        {
+          choices: [{
+            delta: { content: "It is Thursday evening, sir." },
+          }],
+        },
+      ]));
+
+    let result = "";
+    for await (const token of streamLMStudioResponse("What time is it?")) {
+      result += token;
+    }
+
+    expect(result).toBe("It is Thursday evening, sir.");
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    const responseRequest = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body),
+    ) as {
+      messages: Array<Record<string, unknown>>;
+      max_tokens: number;
+      tools?: unknown;
+    };
+    expect(responseRequest.messages.at(-2)).toMatchObject({
+      role: "assistant",
+      tool_calls: [{
+        id: "spectre-tool-datetime",
+        function: {
+          name: "get_current_datetime",
+          arguments: "{}",
+        },
+      }],
+    });
+    expect(responseRequest.messages.at(-1)).toMatchObject({
+      role: "tool",
+      tool_call_id: "spectre-tool-datetime",
+    });
+    expect(responseRequest.max_tokens).toBe(256);
+    expect(responseRequest.tools).toBeUndefined();
+  });
+
+  it("asks the model to select a tool only for ambiguous tool requests", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(toolSelectionResponse())
+      .mockResolvedValueOnce(streamingResponse([
+        { choices: [{ delta: { content: "It is ready, sir." } }] },
+      ]));
+
+    let result = "";
+    for await (
+      const token of streamLMStudioResponse("Use your tool and report back.")
+    ) {
+      result += token;
+    }
+
+    expect(result).toBe("It is ready, sir.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const selectionRequest = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body),
+    ) as Record<string, unknown>;
+    expect(selectionRequest).toMatchObject({
+      stream: false,
+      tool_choice: "required",
+      tools: expect.any(Array),
+    });
+  });
+
+  it("streams ordinary responses without a tool-selection request", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(streamingResponse([
+        { choices: [{ delta: { content: "Certainly, " } }] },
+        { choices: [{ delta: { content: "sir." } }] },
+      ]));
+
+    let result = "";
+    for await (const token of streamLMStudioResponse("Hello")) result += token;
+
+    expect(result).toBe("Certainly, sir.");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const request = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body),
+    ) as Record<string, unknown>;
+    expect(request.tools).toBeUndefined();
+    expect(request.max_tokens).toBe(256);
+  });
+
+  it("fails when LM Studio omits a required tool call", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({
+      choices: [{ message: { role: "assistant", content: "I guessed." } }],
+    }));
+
+    const consume = async () => {
+      for await (
+        const token of streamLMStudioResponse("Use your tool and answer.")
+      ) {
+        void token;
+      }
+    };
+
+    await expect(consume()).rejects.toThrow(
+      "did not return the required tool call",
+    );
+  });
+});

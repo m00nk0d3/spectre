@@ -20,6 +20,8 @@ const IDLE_ANALYSIS: AudioAnalysis = {
   isPlaying: false,
 };
 
+const ORB_BASE_SCALE = 0.72;
+
 function ShaderOrb({ playbackQueue }: ShaderOrbProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const smoothed = useRef({ amplitude: 0, bass: 0, treble: 0 });
@@ -123,7 +125,9 @@ function ShaderOrb({ playbackQueue }: ShaderOrbProps) {
     if (meshRef.current) {
       const idleBreath = Math.sin(time * 1.15) * 0.012;
       meshRef.current.scale.setScalar(
-        1 + idleBreath + values.amplitude * 0.42 + values.bass * 0.16,
+        ORB_BASE_SCALE * (
+          1 + idleBreath + values.amplitude * 0.42 + values.bass * 0.16
+        ),
       );
       meshRef.current.rotation.y = time * 0.055;
       meshRef.current.rotation.x = Math.sin(time * 0.17) * 0.08;

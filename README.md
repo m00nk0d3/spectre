@@ -14,7 +14,9 @@ Digital Noir orb.
    transcribes it with Whisper.cpp, then removes it in `finally`.
 4. LM Studio streams `qwen/qwen3.5-9b` from
    `http://127.0.0.1:1234/v1/chat/completions` with the US English
-   `CONTEXT_MESSAGES`.
+   `CONTEXT_MESSAGES`. OpenAI-compatible tool calls can retrieve the current
+   date/time and read-only local system status; execution is bounded to four
+   calls per request.
 5. `SentenceChunker` emits grammatical `.?!;:` boundaries, strategic commas,
    and max-length word-boundary chunks without dropping punctuation.
 6. Each chunk is synthesized serially by local Kokoro at
@@ -85,6 +87,7 @@ builds.
   pipeline and temporary-file cleanup.
 - `src/main/sentence-chunker.ts`: incremental grammatical text chunking.
 - `src/main/lm-studio.ts`: SSE chat-completion stream.
+- `src/main/spectre-tools.ts`: validated read-only local tool registry.
 - `src/main/kokoro-client.ts`: local WAV synthesis.
 - `src/renderer/vad.ts`: MicVAD callback integration.
 - `src/renderer/audio-playback-queue.ts`: sequence ordering, gapless scheduling,
