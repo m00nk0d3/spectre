@@ -70,8 +70,13 @@ def transcribe_audio(audio: bytes) -> str:
         language="pt",
         beam_size=5,
         initial_prompt=(
-            "Transcrição em português brasileiro. Assistente: Spectre."
+            "Transcrição fiel em português europeu. Assistente: Spectre."
         ),
+        hotwords=(
+            "Spectre, LM Studio, Kokoro, Whisper, AppImage, Linux, "
+            "Electron, Hyprland"
+        ),
+        condition_on_previous_text=False,
         vad_filter=False,
     )
     return "".join(segment.text for segment in segments).strip()

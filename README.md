@@ -48,7 +48,8 @@ Haswell/AVX2 GGML backend when the CPU supports it and otherwise uses the
 portable x64 backend for legacy whisper.cpp calls. Live conversations use a
 warm CTranslate2 int8 model in the local Python service to avoid loading a new
 model for every utterance. Set `WHISPER_BACKEND_PATH` to choose another
-whisper.cpp backend.
+whisper.cpp backend. Its decoding prompt targets European Portuguese and its
+hotword list preserves common Spectre stack names.
 
 Start LM Studio on port 1234 with `qwen/qwen3.5-9b` loaded, then run:
 
