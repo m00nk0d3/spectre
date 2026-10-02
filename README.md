@@ -3,6 +3,42 @@
 Local US English voice assistant for Electron with a transparent, audio-reactive
 Digital Noir orb.
 
+## Install a release
+
+Spectre currently publishes Linux x86_64 AppImage and Debian assets. The
+user-level installer verifies release checksums, installs the AppImage under
+`${XDG_DATA_HOME:-$HOME/.local/share}/spectre/app`, creates the `spectre`
+launcher and desktop entry, provisions managed Python 3.12 with `uv`, installs
+the local voice dependencies, and downloads the Faster Whisper `small` model.
+It does not use `sudo` or modify system Python.
+
+```bash
+curl -fsSL \
+  https://github.com/m00nk0d3/spectre/releases/latest/download/install-spectre.sh \
+  -o /tmp/install-spectre.sh
+bash /tmp/install-spectre.sh
+```
+
+LM Studio and `qwen/qwen3.5-9b` remain separate local prerequisites. Run LM
+Studio on port 1234 before launching `spectre`.
+
+Install a specific release or skip the large managed voice runtime:
+
+```bash
+bash /tmp/install-spectre.sh --version 1.0.0
+bash /tmp/install-spectre.sh --no-runtime
+```
+
+Uninstall the application while retaining downloaded model runtimes:
+
+```bash
+spectre-uninstall
+```
+
+Pass `--purge-runtime` to also remove Spectre's managed Python and Whisper
+runtimes. The uninstaller never removes Obsidian vaults, LM Studio models, or
+Spectre user configuration.
+
 ## Runtime pipeline
 
 1. `@ricky0123/vad-web` runs in the renderer and calls `onSpeechStart` /
@@ -88,6 +124,20 @@ npm run build:electron
 `electron-builder.jsonc` keeps `src/main/python_server/**` outside `app.asar`
 so the managed Python interpreter can execute the server files in packaged
 builds.
+
+## Publishing a release
+
+1. Update `package.json` to the intended semantic version and merge the release
+   commit.
+2. Create and push the matching tag, for example `v1.1.0`.
+3. The `Release` GitHub Actions workflow validates that the tag equals the
+   package version, runs the project checks, builds AppImage and Debian
+   packages, stages installer assets, creates `SHA256SUMS`, and publishes a
+   GitHub Release with generated notes.
+
+The workflow can also be dispatched manually for an existing `v`-prefixed tag.
+`scripts/prepare-release-assets.sh` reproduces the exact published asset set
+from local files under `release/`.
 
 ## Main modules
 

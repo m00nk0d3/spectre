@@ -22,6 +22,7 @@
     "setup:python": "node scripts/setup-python-runtime.mjs",
     "setup:whisper": "node scripts/setup-whisper-runtime.mjs",
     "setup:runtime": "npm run setup:python && npm run setup:whisper",
+    "release:assets": "bash scripts/prepare-release-assets.sh",
     "validate-hyprland": "node scripts/validate-hyprland.ts"
   },
   "dependencies": {
