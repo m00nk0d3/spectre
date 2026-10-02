@@ -1,16 +1,23 @@
 {
-  "appId": "com.spectre.app",
-  "productName": "SPECTRE",
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.m00nk0d3.spectre",
+  "asar": true,
+  "asarUnpack": [
+    "src/main/python_server/**/*",
+    "**/node_modules/**/*.{node,dll}",
+    "**/node_modules/@electron*/**/*.node"
+  ],
+  "files": [
+    "out/**/*",
+    "src/main/python_server/**/*",
+    "package.json"
+  ],
   "directories": {
-    "output": "dist"
+    "output": "release"
   },
   "linux": {
     "target": ["AppImage", "deb"],
     "category": "AudioVideo",
     "maintainer": "m00nk0d3"
-  },
-  "files": [
-    "dist/**/*",
-    "package.json"
-  ]
+  }
 }

@@ -1,19 +1,47 @@
-import { app, BrowserWindow, ipcMain } from "electron";
-import path from "path";
-import { spawnPythonServer } from "@/scripts/spawn-python-server";
-import type { AudioBufferOutput } from "@/types/ipc";
-import { createWavBuffer } from "@/utils/audio-converter";
-import { transcribeWithWhisperCpp } from "./whisper";
-import { streamTTSAudio } from "./stream-tts";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  net,
+  protocol,
+  session,
+} from "electron";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import {
+  getTTSServerUrl,
+  spawnPythonServer,
+} from "../../scripts/spawn-python-server";
 import { CONTEXT_MESSAGES } from "@/ai/messages/context";
+import type { AudioBufferOutput, ConversationEvent } from "@/types/ipc";
+import { createWavBuffer, writeWavFile } from "@/utils/audio-converter";
+import { ConversationOrchestrator } from "./conversation-orchestrator";
+import { streamTTSAudio } from "./stream-tts";
+import { transcribeWithWhisperCpp } from "./whisper";
 
 const WINDOW_MANAGER_CLASS = process.env.WINDOW_MANAGER_CLASS || "spectre";
+const RENDERER_SCHEME = "spectre";
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: RENDERER_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 
 let mainWindow: BrowserWindow | null = null;
-let pythonProcess: any = null;
 let pythonPid: number | null = null;
+let serverResult: { pid: number; ready: boolean } | null = null;
+let isSpeechActive = false;
+let conversation: ConversationOrchestrator | null = null;
 
-function createWindow() {
+function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
@@ -23,48 +51,69 @@ function createWindow() {
     transparent: true,
     hasShadow: false,
     alwaysOnTop: true,
+    backgroundColor: "#00000000",
     webPreferences: {
-      preload: path.join(__dirname, "../preload/index"),
+      preload: path.join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       audioContext: true,
     },
-  } as any);
+  } as Electron.BrowserWindowConstructorOptions);
 
-  (mainWindow as any).windowClassName = WINDOW_MANAGER_CLASS;
+  Object.assign(mainWindow, { windowClassName: WINDOW_MANAGER_CLASS });
+  mainWindow.webContents.on("console-message", (details) => {
+    console.log(`[RENDERER:${details.level}] ${details.message}`);
+  });
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL) => {
+      console.error(
+        `[RENDERER] Failed to load ${validatedURL}: ${errorCode} ${errorDescription}`,
+      );
+    },
+  );
 
-  mainWindow.loadFile("./index.html");
+  if (process.env.ELECTRON_RENDERER_URL) {
+    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+  } else {
+    void mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+  }
 }
 
-let serverResult: { pid: number; ready: boolean } | null = null;
-let isSpeechActive = false;
-
-app.whenReady().then(async () => {
-  createWindow();
-
-  // INITIALIZE AI CONTEXT MESSAGES (AC-01: IDIOMA ESTRITO, AC-02: FORMATAÇÃO ZERO, AC-03: PERSONA AMIGO-PROFISIONAL)
-  console.log("[AI-COMMUNICATIONS] Context messages initialized:", CONTEXT_MESSAGES.length);
-  console.log("[AI-COMMUNICATIONS] IDIOMA ESTRITO - Responda 100% em português, independentemente do idioma usado pelo usuário");
-  console.log("[AI-COMMUNICATIONS] FORMATAÇÃO ZERO - Não use Markdown (asteriscos, hashtags, pontos de lista, backticks). Produza texto puro para síntese de voz natural.");
-  console.log("[AI-COMMUNICATIONS] PERSONA AMIGO-PROFISIONAL - Trate o usuário como um amigo próximo, com bom senso de humor e tom informal, mas mantendo sempre respeito profissional. Não seja robótico. Seja conversacional mas educado.");
-
-  try {
-    const result = await spawnPythonServer(process.env.KOKORO_MODEL_PATH || "");
-    pythonPid = result.pid;
-    serverResult = result;
-
-    if (!result.ready) {
-      throw new Error("Python server failed to load GPU model within timeout");
+function registerRendererProtocol(): void {
+  const rendererRoot = path.resolve(__dirname, "../renderer");
+  protocol.handle(RENDERER_SCHEME, (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== "renderer") {
+      return new Response("Not found", { status: 404 });
     }
 
-    console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pythonPid}`);
-  } catch (err) {
-    console.error("[PYTHON-SERVER] Failed to start:", err);
-    throw err;
-  }
+    const filePath = path.resolve(rendererRoot, `.${decodeURIComponent(url.pathname)}`);
+    if (
+      filePath !== rendererRoot &&
+      !filePath.startsWith(`${rendererRoot}${path.sep}`)
+    ) {
+      return new Response("Forbidden", { status: 403 });
+    }
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) app.quit();
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+}
+
+function sendConversationEvent(event: ConversationEvent): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("conversation:event", event);
+  }
+}
+
+function registerIpcHandlers(): void {
+  ipcMain.handle("conversation:process", async (_event, audio: Float32Array) => {
+    if (!conversation) throw new Error("Conversation service is not ready");
+    await conversation.process(audio);
+  });
+
+  ipcMain.handle("conversation:cancel", () => {
+    conversation?.cancel();
   });
 
   ipcMain.handle("speech-start", () => {
@@ -83,274 +132,137 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("get-tts-audio", async (_event, text: string): Promise<ArrayBuffer> => {
-    if (!serverResult) {
-      console.error("[SPECTRE-TTS] Python server not initialized yet");
-      throw new Error("Python TTS server not ready");
-    }
-
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (!serverResult) throw new Error("Python TTS server not ready");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      Number(process.env.OPENAI_TIMEOUT) || 30_000,
+    );
     try {
-      console.log("[SPECTRE-TTS] Generating audio for:", text.substring(0, 50));
-
-      const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), Number(process.env.OPENAI_TIMEOUT) || 30000);
-
-      // Call local FastAPI endpoint at /tts (not LM Studio)
-      const response = await fetch("http://127.0.0.1:1234/tts", {
+      const response = await fetch(`${getTTSServerUrl()}/tts`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: text,
-          voice: process.env.TTS_VOICE || "alloy"
+          text,
+          voice: process.env.TTS_VOICE || "am_michael",
+          speed: Number(process.env.TTS_SPEED) || 1.1,
+          response_format: "wav",
         }),
         signal: controller.signal,
       });
-
-      if (timeoutId) clearTimeout(timeoutId);
-
       if (!response.ok) {
-        const statusText = response.statusText || "";
-        throw new Error(`TTS API returned ${response.status}: ${statusText}`);
+        const details = await response.text();
+        throw new Error(
+          `TTS API returned ${response.status}: ${details || response.statusText}`,
+        );
       }
-
-      const wavBuffer = await response.arrayBuffer();
-
-      console.log("[SPECTRE-TTS] Audio generated successfully");
-      return wavBuffer;
-    } catch (fetchError) {
-      if (timeoutId) clearTimeout(timeoutId);
-
-      let errorMessage: string;
-      if (fetchError instanceof TypeError && fetchError.message.includes("Failed to fetch")) {
-        errorMessage = "TTS API request failed. Please ensure FastAPI server is running on port 1234.";
-      } else if (fetchError instanceof DOMException && (fetchError.name === "AbortError" || fetchError.message.includes("timeout"))) {
-        errorMessage = "TTS API request timed out after 30s";
-      } else {
-        errorMessage = `TTS API error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`;
+      return await response.arrayBuffer();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("TTS API request timed out");
       }
-
-      console.error("[SPECTRE-TTS]", errorMessage);
-
-      // Fallback to external LM Studio when FastAPI unreachable (optional but recommended)
-      const apiAuth = process.env.LM_STUDIO_API_KEY || "";
-      if (apiAuth) {
-        console.warn("[SPECTRE-TTS] Falling back to external LM Studio service");
-        try {
-          const fetchResponse = await fetch("http://localhost:1234/v1/audio/speech", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${apiAuth}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "tts-1",
-              input: text,
-              voice: "alloy",
-              response_format: "wav"  // Use WAV format for consistent output
-            }),
-          });
-
-          if (fetchResponse.ok) {
-            const wavBuffer = await fetchResponse.arrayBuffer();
-            // Return WAV buffer - consistent with primary FastAPI TTS endpoint
-            return wavBuffer;
-          }
-        } catch (fallbackError) {
-          console.error("[SPECTRE-TTS] Fallback also failed:", fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
-        }
-      }
-
-      throw new Error(`TTS API request failed: ${errorMessage}`);
+      // Deliberately no remote fallback: speech remains local.
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   });
 
-  ipcMain.handle("get-tts-audio-stream", async (_event: any, text: string): Promise<ReadableStream<{ seq: number; data: ArrayBuffer }>> => {
-    const apiKey = process.env.LM_STUDIO_API_KEY || "";
-
-    if (!apiKey) {
-      throw new Error("LM_STUDIO_API_KEY environment variable is not set");
-    }
-
-    console.log("[SPECTRE] TTS streaming request for:", text.substring(0, 50) + "...");
-
-    const stream = streamTTSAudio(text, { apiKey });
-
-    // Convert AsyncGenerator to ReadableStream for IPC compatibility (AC-002: Non-blocking streaming)
+  ipcMain.handle("get-tts-audio-stream", async (_event, text: string) => {
+    const stream = streamTTSAudio(text, {
+      apiKey: process.env.LM_STUDIO_API_KEY || "",
+    });
     return new ReadableStream<{ seq: number; data: ArrayBuffer }>({
       async pull(controller) {
-        try {
-          const chunk = await stream.next();
-          if (!chunk.done) {
-            controller.enqueue(chunk.value);
-          } else {
-            controller.close(); // Complete signal (AC-003: reconstruction complete)
-          }
-        } catch (error) {
-          controller.error(error as Error);
-        }
+        const chunk = await stream.next();
+        if (chunk.done) controller.close();
+        else controller.enqueue(chunk.value);
       },
       async cancel() {
-        stream.return?.(undefined); // Clean up generator on cancellation
+        await stream.return?.(undefined);
       },
     });
   });
 
-  ipcMain.handle("python-status-request", async () => {
-    if (!serverResult) {
-      console.error("[PYTHON-SERVER] Server not yet initialized");
-      throw new Error("Python server not ready");
-    }
+  ipcMain.handle("python-status-request", () => {
+    if (!serverResult) throw new Error("Python server not ready");
     return serverResult.ready;
   });
+  ipcMain.handle("python-pid", () => pythonPid);
 
-  ipcMain.handle("python-pid", () => {
-    return pythonPid !== null ? pythonPid : null;
-  });
+  ipcMain.handle("wav-convert", (_event, float32Data: Float32Array) => ({
+    success: true,
+    buffer: createWavBuffer(float32Data, 16000, 1),
+  }));
+  ipcMain.handle(
+    "wav-write-file",
+    async (_event, float32Data: Float32Array, filePath: string) => {
+      await writeWavFile(float32Data, filePath);
+      return { success: true, path: filePath };
+    },
+  );
 
-  ipcMain.handle("wav-convert", async (_event, float32Data: Float32Array) => {
-    try {
-      const audioConverter = await import("@/utils/audio-converter").then(m => m);
-      const wavBuffer = audioConverter.createWavBuffer(float32Data, 16000, 1);
-
-      return { success: true, buffer: wavBuffer };
-    } catch (error) {
-      console.error("[WAV-CONVERT] Conversion failed:", error instanceof Error ? error.message : String(error));
-      throw new Error(`WAV conversion failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  });
-
-  ipcMain.handle("wav-write-file", async (_event, float32Data: Float32Array, path: string) => {
-    try {
-      const audioConverter = await import("@/utils/audio-converter").then(m => m);
-      await audioConverter.writeWavFile(float32Data, path);
-
-      return { success: true, path };
-    } catch (error) {
-      console.error("[WAV-FILE] Write failed:", error instanceof Error ? error.message : String(error));
-      throw new Error(`Failed to write WAV file: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  });
-
-  ipcMain.handle("vad-get-collected-audio", async (_event, _config?: { sampleRate?: number; channels?: number }) => {
-    try {
-      const vad = await import("@/renderer/vad").then(m => m.vadModule);
-      if (!vad || !vad.collectedBuffers) {
-        throw new Error("No audio buffers collected from VAD");
-      }
-
-      return { success: true, buffers: vad.collectedBuffers };
-    } catch (error) {
-      console.error("[VAD] Get collected audio failed:", error instanceof Error ? error.message : String(error));
-      throw new Error(`Failed to get collected audio: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  });
-
-  ipcMain.handle("vad-trigger-wav-conversion", async (_event, config?: { sampleRate?: number; channels?: number }) => {
-    try {
-      const vad = await import("@/renderer/vad").then(m => m.vadModule);
-      if (!vad.collectedBuffers || vad.collectedBuffers.length === 0) {
-        throw new Error("No audio buffers to convert");
-      }
-
-      const audioConverter = await import("@/utils/audio-converter").then(m => m);
-      const flattenedData = new Float32Array(
-        vad.collectedBuffers.reduce((acc, buf) => acc + buf.length, 0)
-      );
-      let offset = 0;
-      for (const buf of vad.collectedBuffers) {
-        flattenedData.set(buf, offset);
-        offset += buf.length;
-      }
-      const wavBuffer = audioConverter.createWavBuffer(flattenedData, config?.sampleRate ?? 16000, config?.channels ?? 1);
-
-      return { success: true, buffer: wavBuffer };
-    } catch (error) {
-      console.error("[VAD-WAV] Conversion failed:", error instanceof Error ? error.message : String(error));
-      throw new Error(`WAV conversion from VAD failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  });
-
-  ipcMain.handle("vad-capture-start", async () => {
-    if (!isSpeechActive) {
-      console.warn("[VAD] Capture not started - no active speech");
-      return false;
-    }
-    console.log("[VAD] Audio capture enabled");
-    return true;
-  });
-
-  ipcMain.handle("vad-capture-stop", async () => {
-    if (isSpeechActive) {
-      console.warn("[VAD] Capture not stopped - speech still active");
-      return false;
-    }
-    console.log("[VAD] Audio capture disabled");
-    return true;
-  });
-
-  ipcMain.handle("vad-clear-collected", async () => {
-    const vad = await import("@/renderer/vad").then(m => m.vadModule);
-    if (vad && vad.collectedBuffers) {
-      vad.collectedBuffers = [];
-    }
-    console.log("[VAD] Cleared collected buffers");
-    return true;
-  });
-
-  ipcMain.handle("vad-status", async () => {
-    const vad = await import("@/renderer/vad").then(m => m.vadModule);
-    if (!vad) {
-      return { status: "not-initialized" };
-    }
-    return {
-      status: vad.state.isSpeaking ? "speaking" : "idle",
-      samplesCollected: vad.collectedBuffers?.length || 0,
-    };
-  });
-
-  ipcMain.handle("vad-trigger-start", async () => {
-    if (!isSpeechActive) {
-      isSpeechActive = true;
-      console.log("[SPECTRE] Speech started");
-      return true;
-    }
-    return false;
-  });
-
-  ipcMain.handle("vad-trigger-end", async () => {
-    console.log("[SPECTRE] Speech ended");
-    isSpeechActive = false;
-    return true;
-  });
-
-  ipcMain.handle("audio-buffer-send", async (_event, float32Data: Float32Array | Buffer): Promise<AudioBufferOutput> => { try { if (float32Data.length === 0) throw new Error("Audio buffer is empty"); const wavBuffer = createWavBuffer(float32Data, 16000, 1); return { success: true, buffer: wavBuffer }; } catch (error) { console.error("[AUDIO-IPC] Send failed:", error instanceof Error ? error.message : String(error)); throw new Error(`Failed to send audio buffer: ${error instanceof Error ? error.message : String(error)}`); } });
+  ipcMain.handle("audio-buffer-send", async (_event, float32Data: Float32Array | Buffer): Promise<AudioBufferOutput> => { if (float32Data.length === 0) throw new Error("Audio buffer is empty"); return { success: true, buffer: createWavBuffer(float32Data, 16000, 1) }; });
 
   ipcMain.handle("whisper-transcribe", async (_event, wavPath: string) => {
     const result = await transcribeWithWhisperCpp(wavPath);
-
     return result;
+  });
+}
+
+app.whenReady().then(async () => {
+  registerRendererProtocol();
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, permission, callback) => {
+      callback(permission === "media");
+    },
+  );
+  createWindow();
+  registerIpcHandlers();
+  conversation = new ConversationOrchestrator({
+    workDirectory: path.join(app.getPath("userData"), "conversation-audio"),
+    emit: sendConversationEvent,
+  });
+
+  console.log(
+    `[AI-COMMUNICATIONS] Context messages initialized: ${CONTEXT_MESSAGES.length}`,
+  );
+  console.log(
+    "[AI-COMMUNICATIONS] US ENGLISH ONLY; ZERO MARKDOWN, plain text for speech; DISCREET BUTLER persona with humor, conversational and not robotic.",
+  );
+
+  try {
+    const result = await spawnPythonServer(
+      process.env.KOKORO_MODEL_PATH || "",
+    );
+    pythonPid = result.pid;
+    serverResult = result;
+    if (!result.ready) {
+      throw new Error("Python server failed to load GPU model within timeout");
+    }
+    console.log(`[PYTHON-SERVER] GPU model loaded on PID ${pythonPid}`);
+  } catch (error) {
+    console.error("[PYTHON-SERVER] Failed to start:", error);
+    serverResult = null;
+    pythonPid = null;
+  }
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on("will-quit", () => {
-  if (pythonProcess && pythonPid !== null) {
-    console.log("[PYTHON-SERVER] Killing subprocess PID:", pythonPid);
+  conversation?.cancel();
+  if (pythonPid !== null) {
     try {
-      process.kill(Number(pythonPid), "SIGTERM");
-    } catch (e: unknown) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      console.error("[PYTHON-SERVER] SIGTERM failed:", errorMsg);
-      try {
-        process.kill(Number(pythonPid), "SIGKILL");
-        console.log("[PYTHON-SERVER] Used SIGKILL to terminate subprocess");
-      } catch (sigkillErr: unknown) {
-        const sigkillMsg = sigkillErr instanceof Error ? sigkillErr.message : String(sigkillErr);
-        console.error("[PYTHON-SERVER] SIGKILL also failed:", sigkillMsg);
-      }
+      process.kill(pythonPid, "SIGTERM");
+    } catch (error) {
+      console.error(
+        "[PYTHON-SERVER] SIGTERM failed:",
+        error instanceof Error ? error.message : String(error),
+      );
     }
-    pythonProcess = null;
     pythonPid = null;
   }
 });

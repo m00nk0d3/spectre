@@ -1,374 +1,281 @@
 import { Canvas, useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { useRef, useEffect } from "react";
+import type { ConversationState } from "@/types/ipc";
 import "../styles/index.css";
-import { vadModule } from "./vad";
+import {
+  AudioPlaybackQueue,
+  type AudioAnalysis,
+} from "./audio-playback-queue";
+import { createVad } from "./vad";
 
-// Apply transparent background globally to ensure full transparency
-const root = document.getElementById("root");
-if (root) {
-  root.style.backgroundColor = "transparent";
+interface ShaderOrbProps {
+  playbackQueue: React.MutableRefObject<AudioPlaybackQueue | null>;
 }
 
-declare global {
-  interface Window {
-    electron: {
-      notifySpeechStart: () => boolean;
-      notifySpeechEnd: () => boolean;
-      createWavBuffer?: (float32Data: Float32Array) => Promise<{ success: boolean; buffer: ArrayBuffer }>;
-      vadGetCollectedAudio?: (config?: { sampleRate?: number; channels?: number }) => Promise<any>;
-      vadTriggerWavConversion?: (config?: { sampleRate?: number; channels?: number }) => Promise<any>;
-      sendAudioBuffer?: (float32Data: Float32Array | Buffer) => Promise<{ success: boolean; buffer?: ArrayBuffer }>;
-    };
-  }
-}
+const IDLE_ANALYSIS: AudioAnalysis = {
+  amplitude: 0,
+  bass: 0,
+  treble: 0,
+  isPlaying: false,
+};
 
-function ShaderOrb({ amplitude }: { amplitude: number }) {
-  const meshRef = useRef<THREE.Mesh | null>(null);
-  const noiseTimeRef = useRef(Date.now());
-  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+const ORB_BASE_SCALE = 0.72;
 
-  useEffect(() => {
-    const material = new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 },
-        amplitude: { value: amplitude },
-        noiseTime: { value: noiseTimeRef.current },
-      },
-      vertexShader: `
-        uniform float time;
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float time;
-        uniform float amplitude;
-        uniform float noiseTime;
-        varying vec2 vUv;
+function ShaderOrb({ playbackQueue }: ShaderOrbProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const smoothed = useRef({ amplitude: 0, bass: 0, treble: 0 });
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uAmplitude: { value: 0 },
+      uBass: { value: 0 },
+      uTreble: { value: 0 },
+    },
+    vertexShader: `
+      uniform float uTime;
+      uniform float uAmplitude;
+      uniform float uBass;
+      uniform float uTreble;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying float vNoise;
 
-        float hash(float n) { return fract(sin(n * 1e4) * 1e4); }
-        float snoise(vec3 x) {
-          const vec2 C = vec2(1.0 / 3.0, 1.0 / 6.0);
-          const vec4 K = vec4(1.0, 2.0, 3.0, 4.0);
-          vec4 i = floor(x + dot(x, C.yx));
-          vec4 x_ = x - i + dot(i, C.xxx);
-          vec3 p = permute(permute(i.x) + i.y * i.z + K.zyx);
-          vec3 q = p + x._xxx;
-          vec3 r = q + x._xyz;
-          float norm = smoothstep(0.0, 0.65, x.yzw);
-          return fract(49.0 * i.zzz + hash(x) * step(0.25, x.x));
-        }
-
-        void main() {
-          float noise = snoise(vec3(vUv.x, vUv.y, time)) * 0.1 + noiseTime;
-          vec3 baseColor = vec3(0.08, 0.07, 0.06);
-          float pulse = sin(time * 2.0) * 0.05;
-          gl_FragColor = vec4(baseColor + noise * 0.1 + pulse * 0.1, 1.0);
-        }
-      `,
-    });
-
-    materialRef.current = material;
-
-    return () => {
-      if (materialRef.current) {
-        materialRef.current.dispose();
-        materialRef.current = null;
+      float hash(vec3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
       }
-    };
-  }, [amplitude]);
+
+      float noise(vec3 p) {
+        vec3 i = floor(p);
+        vec3 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(
+          mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x),
+              mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+          mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
+              mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y),
+          f.z
+        );
+      }
+
+      void main() {
+        float slowNoise = noise(position * 2.7 + vec3(uTime * 0.16));
+        float detail = sin(position.y * 13.0 + uTime * 2.5) * uTreble;
+        float strength = 0.045 + uAmplitude * 0.28 + uBass * 0.18;
+        float displacement = (slowNoise - 0.5) * strength + detail * 0.025;
+        vec3 displaced = position + normal * displacement;
+        vNoise = slowNoise;
+        vNormal = normalize(normalMatrix * normal);
+        vec4 viewPosition = modelViewMatrix * vec4(displaced, 1.0);
+        vViewPosition = -viewPosition.xyz;
+        gl_Position = projectionMatrix * viewPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uAmplitude;
+      uniform float uBass;
+      uniform float uTreble;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying float vNoise;
+
+      void main() {
+        vec3 viewDirection = normalize(vViewPosition);
+        float facing = clamp(dot(normalize(vNormal), viewDirection), 0.0, 1.0);
+        float rim = pow(1.0 - facing, 2.5);
+        float grain = smoothstep(0.32, 0.78, vNoise);
+        float pulse = 0.5 + 0.5 * sin(uTime * 1.15);
+
+        vec3 black = vec3(0.006, 0.008, 0.012);
+        vec3 graphite = vec3(0.035, 0.045, 0.060);
+        vec3 steel = vec3(0.35, 0.52, 0.68);
+        vec3 electric = vec3(0.70, 0.90, 1.00);
+        vec3 surface = mix(black, graphite, facing + grain * 0.18);
+        vec3 halo = mix(steel, electric, uTreble) *
+          rim * (0.75 + uAmplitude * 2.8 + uBass * 1.4);
+        surface += halo + electric * pulse * 0.025;
+
+        float alpha = clamp(0.30 + facing * 0.34 + rim * 0.66, 0.0, 1.0);
+        gl_FragColor = vec4(surface, alpha);
+      }
+    `,
+  }), []);
+
+  useEffect(() => () => material.dispose(), [material]);
 
   useFrame(({ clock }) => {
-    const time = clock.elapsedTime;
-    noiseTimeRef.current = Date.now() / 1000;
+    const analysis = playbackQueue.current?.analyze() ?? IDLE_ANALYSIS;
+    const attack = analysis.isPlaying ? 0.24 : 0.07;
+    const values = smoothed.current;
+    values.amplitude += (analysis.amplitude - values.amplitude) * attack;
+    values.bass += (analysis.bass - values.bass) * attack;
+    values.treble += (analysis.treble - values.treble) * attack;
 
-    if (meshRef.current && materialRef.current) {
-      meshRef.current.scale.setScalar(1.2 + amplitude * Math.sin(time * 8));
-      materialRef.current.uniforms.time.value = time;
-      materialRef.current.uniforms.noiseTime.value = noiseTimeRef.current;
+    const time = clock.elapsedTime;
+    material.uniforms.uTime.value = time;
+    material.uniforms.uAmplitude.value = values.amplitude;
+    material.uniforms.uBass.value = values.bass;
+    material.uniforms.uTreble.value = values.treble;
+
+    if (meshRef.current) {
+      const idleBreath = Math.sin(time * 1.15) * 0.012;
+      meshRef.current.scale.setScalar(
+        ORB_BASE_SCALE * (
+          1 + idleBreath + values.amplitude * 0.42 + values.bass * 0.16
+        ),
+      );
+      meshRef.current.rotation.y = time * 0.055;
+      meshRef.current.rotation.x = Math.sin(time * 0.17) * 0.08;
     }
   });
 
   return (
-    <mesh ref={meshRef} scale={[1.8, 1.8, 1.8]}>
-      <sphereGeometry args={[1, 64, 64]} />
-      <primitive object={materialRef.current} attach="material" />
+    <mesh ref={meshRef}>
+      <icosahedronGeometry args={[1, 7]} />
+      <primitive object={material} attach="material" />
     </mesh>
   );
 }
 
+const STATE_LABELS: Record<ConversationState, string> = {
+  idle: "Ready",
+  listening: "Listening",
+  transcribing: "Transcribing",
+  thinking: "Thinking",
+  speaking: "Speaking",
+  error: "Error",
+};
+
 export default function App() {
-  const amplitudeRef = useRef(0.01);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const rafIdRef = useRef<number | null>(null);
+  const playbackQueue = useRef<AudioPlaybackQueue | null>(null);
+  const [state, setState] = useState<ConversationState>("idle");
+  const [transcript, setTranscript] = useState("");
+  const [reply, setReply] = useState("");
+  const [error, setError] = useState("");
 
-  // Wire speech events from Electron IPC bridge
   useEffect(() => {
-    if (typeof window !== "undefined" && window.electron) {
-      const initializeVAD = async () => {
-        try {
-          await vadModule.start();
-          window.electron.notifySpeechStart();
-        } catch (err) {
-          console.error("[VAD] Start failed:", err);
-        }
-      };
-
-      initializeVAD();
-    }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    const cleanup = () => {
-      vadModule.cleanup();
-    };
-
-    return cleanup;
-  });
-
-  // Audio capture and conversion handler
-  useEffect(() => {
-    if (typeof window !== "undefined" && !window.electron) {
-      console.warn("[APP] Electron bridge not available");
+    if (!window.electron) {
+      setState("error");
+      setError("Electron bridge unavailable");
       return;
     }
 
-    const setupAudioCapture = async () => {
-      try {
-        audioContextRef.current = new AudioContext();
-
-        // Setup microphone input for real-time capture during speech
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-          sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-
-          // Create script processor or use AudioWorklet for real-time capture
-          const bufferSize = 4096;
-          const scriptNode = audioContextRef.current.createScriptProcessor(bufferSize, 1, 1);
-
-          scriptNode.onaudioprocess = (e) => {
-            const inputData = e.inputBuffer.getChannelData(0);
-            const outputData = e.outputBuffer.getChannelData(0);
-
-            // Pass-through to avoid feedback
-            for (let i = 0; i < inputData.length; i++) {
-              outputData[i] = inputData[i];
-
-              // Convert to Float32 and capture during speech state
-              if (vadModule.state.isSpeaking) {
-                const buffer = new Float32Array([inputData[i]]);
-                vadModule.addCollectedBuffer(buffer);
-              }
-            }
-          };
-
-          sourceRef.current.connect(scriptNode);
-          scriptNode.connect(audioContextRef.current.destination);
-        }
-
-        // Set up real-time amplitude monitoring for visualization
-        const monitorAmplitude = () => {
-          if (!audioContextRef.current) return;
-
-          // Analyze microphone input (if connected)
-          if (sourceRef.current) {
-            try {
-              const scriptNode = audioContextRef.current.createScriptProcessor(512, 1, 1);
-              const dataArray = new Float32Array(512);
-
-              scriptNode.onaudioprocess = (e) => {
-                const inputData = e.inputBuffer.getChannelData(0);
-                for (let i = 0; i < inputData.length && i < dataArray.length; i++) {
-                  dataArray[i] = inputData[i];
-                }
-
-                // Calculate RMS amplitude
-                let sum = 0;
-                for (let i = 0; i < dataArray.length; i++) {
-                  sum += dataArray[i] * dataArray[i];
-                }
-                const rms = Math.sqrt(sum / dataArray.length);
-
-                // Update visualization
-                if (rms > 0.01) {
-                  amplitudeRef.current = Math.min(amplitudeRef.current + (rms - amplitudeRef.current) * 0.1, 0.3);
-                } else if (amplitudeRef.current > 0.01) {
-                  // Smoothly decay
-                  amplitudeRef.current *= 0.95;
-                }
-              };
-
-              sourceRef.current.connect(scriptNode);
-              scriptNode.connect(audioContextRef.current.destination);
-            } catch (err) {
-              console.warn("[APP] Amplitude monitoring failed:", err);
-            }
-          }
-        };
-
-        rafIdRef.current = requestAnimationFrame(monitorAmplitude);
-
-      } catch (err) {
-        console.error("[APP] Audio capture setup failed:", err);
-      } finally {
-        const ctx = audioContextRef.current;
-        if (ctx && ctx.state !== "closed") {
-          ctx.close().catch(console.error);
-        }
-      }
-
-      // Set up real-time amplitude monitoring for visualization
-      const monitorAmplitude = () => {
-        if (!audioContextRef.current) return;
-
-        // Analyze microphone input (if connected)
-        if (sourceRef.current) {
-          try {
-            const scriptNode = audioContextRef.current.createScriptProcessor(512, 1, 1);
-            const dataArray = new Float32Array(512);
-
-            scriptNode.onaudioprocess = (e) => {
-              const inputData = e.inputBuffer.getChannelData(0);
-              for (let i = 0; i < inputData.length && i < dataArray.length; i++) {
-                dataArray[i] = inputData[i];
-              }
-
-              // Calculate RMS amplitude
-              let sum = 0;
-              for (let i = 0; i < dataArray.length; i++) {
-                sum += dataArray[i] * dataArray[i];
-              }
-              const rms = Math.sqrt(sum / dataArray.length);
-
-              // Update visualization
-              if (rms > 0.01) {
-                amplitudeRef.current = Math.min(amplitudeRef.current + (rms - amplitudeRef.current) * 0.1, 0.3);
-              } else if (amplitudeRef.current > 0.01) {
-                // Smoothly decay
-                amplitudeRef.current *= 0.95;
-              }
-            };
-
-            sourceRef.current.connect(scriptNode);
-            scriptNode.connect(audioContextRef.current.destination);
-          } catch (err) {
-            console.warn("[APP] Amplitude monitoring failed:", err);
-          }
-        }
-      };
-
-      rafIdRef.current = requestAnimationFrame(monitorAmplitude);
-
-      monitorAmplitude();
-
-      return () => {
-        if (rafIdRef.current) {
-          cancelAnimationFrame(rafIdRef.current);
-        }
-
-        const ctx = audioContextRef.current;
-        if (sourceRef.current && ctx && ctx.state !== "closed") {
-          sourceRef.current.disconnect();
-        }
-
-        if (ctx && ctx.state !== "closed") {
-          ctx.close().catch(console.error);
-        }
-      }
+    let vad: ReturnType<typeof createVad> | null = null;
+    const reportMicrophoneError = (vadError: unknown) => {
+      setState("error");
+      setError(
+        `Microphone: ${
+          vadError instanceof Error ? vadError.message : String(vadError)
+        }`,
+      );
     };
-
-    // Cleanup audio context on unmount
-
-    const cleanupAudio = () => {
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
-
-      const ctx = audioContextRef.current;
-      if (sourceRef.current && ctx && ctx.state !== "closed") {
-        sourceRef.current.disconnect();
-      }
-
-      if (ctx && ctx.state !== "closed") {
-        ctx.close().catch(console.error);
-      }
-    };
-
-    window.electron.notifySpeechStart = () => {
-      if (!audioContextRef.current) return false;
-
-      amplitudeRef.current = 0.2;
-
-      console.log("[APP] Audio capture enabled");
-      return true;
-    };
-
-    window.electron.notifySpeechEnd = () => {
-      if (vadModule.state.isSpeaking) {
-        vadModule.state.isSpeaking = false;
-
-        // Trigger audio conversion to WAV on speech end
-        if (typeof window.electron.createWavBuffer === "function") {
-          try {
-            const collectedData: Float32Array[] = [];
-
-            // Flatten all collected buffers from VAD
-            for (const buf of vadModule.collectedBuffers) {
-              collectedData.push(buf);
-            }
-
-            if (collectedData.length > 0) {
-              const totalLength = collectedData.reduce((a, b) => a + b.length, 0);
-              const flattenedData = new Float32Array(totalLength);
-
-              let offset = 0;
-              for (const buf of collectedData) {
-                flattenedData.set(buf, offset);
-                offset += buf.length;
-              }
-
-              // Convert to WAV buffer (fire and forget - conversion happens in IPC handler)
-              window.electron.createWavBuffer(flattenedData).then((result) => {
-                if (result.success && result.buffer) {
-                  console.log("[APP] Audio converted to WAV successfully");
-                } else {
-                  console.error("[APP] WAV conversion failed");
-                }
-
-                // Clear collected buffers after conversion
-                vadModule.collectedBuffers.length = 0;
-              }).catch((err) => {
-                console.error("[APP] WAV conversion error:", err);
-              });
-            }
-          } catch (err) {
-            console.error("[APP] WAV conversion error:", err);
-          } finally {
-            // Cleanup can go here if needed
-          }
+    const queue = new AudioPlaybackQueue(undefined, {
+      playbackTailMs: 350,
+      onPlaybackStart: async () => {
+        await vad?.stop();
+      },
+      onPlaybackIdle: () => {
+        void vad?.start().catch(reportMicrophoneError);
+      },
+    });
+    playbackQueue.current = queue;
+    const removeConversationListener = window.electron.onConversationEvent(
+      (event) => {
+        if (event.type === "state") setState(event.state);
+        if (event.type === "transcript") setTranscript(event.text);
+        if (event.type === "text") setReply(event.text);
+        if (event.type === "audio") {
+          void queue.enqueue(event.sequence, event.data).catch((queueError) => {
+            setState("error");
+            setError(
+              queueError instanceof Error
+                ? queueError.message
+                : String(queueError),
+            );
+          });
         }
-      }
+        if (event.type === "error") {
+          setError(event.message);
+          setState("error");
+        }
+      },
+    );
 
-      console.log("[APP] Audio capture disabled");
-      return true;
+    vad = createVad({
+      onSpeechStart: async () => {
+        queue.reset();
+        setTranscript("");
+        setReply("");
+        setError("");
+        await window.electron.cancelConversation();
+        setState("listening");
+        await window.electron.notifySpeechStart();
+      },
+      onSpeechEnd: async (audio) => {
+        await window.electron.notifySpeechEnd();
+        await window.electron.processConversation(audio);
+      },
+      onError: (vadError) => {
+        reportMicrophoneError(vadError);
+      },
+    });
+
+    void vad.start().catch(reportMicrophoneError);
+
+    return () => {
+      removeConversationListener();
+      void window.electron.cancelConversation();
+      void vad.cleanup();
+      void queue.close();
+      playbackQueue.current = null;
     };
-
-    setupAudioCapture(); return cleanupAudio;
-
   }, []);
 
   return (
-    <Canvas camera={{ position: [0, 0, 4], fov: 45 }}>
-      <ambientLight intensity={0.3} />
-      <pointLight position={[10, 10, 5]} intensity={0.6} color="#ff4444" />
-      <pointLight position={[-10, -10, -5]} intensity={0.4} color="#888888" />
-      <ShaderOrb amplitude={amplitudeRef.current} />
-    </Canvas>
+    <main className="spectre-shell">
+      <section className="orb-stage" aria-label="Spectre orb">
+        <Canvas
+          className="orb-canvas"
+          camera={{ position: [0, 0, 3.15], fov: 42 }}
+          dpr={[1, 2]}
+          gl={{ alpha: true, antialias: true, premultipliedAlpha: false }}
+          onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
+        >
+          <ShaderOrb playbackQueue={playbackQueue} />
+        </Canvas>
+        <div className={`state state-${state}`}>
+          <span className="state-dot" aria-hidden="true" />
+          {STATE_LABELS[state]}
+        </div>
+      </section>
+      <section className="transcript-view" aria-live="polite">
+        <header>Transcript</header>
+        <div className="transcript-content">
+          {!transcript && !reply && !error && (
+            <p className="transcript-placeholder">
+              Talk to Spectre to start a conversation.
+            </p>
+          )}
+          {transcript && (
+            <article className="transcript-entry transcript-user">
+              <span>You</span>
+              <p>{transcript}</p>
+            </article>
+          )}
+          {reply && (
+            <article className="transcript-entry transcript-spectre">
+              <span>Spectre</span>
+              <p>{reply}</p>
+            </article>
+          )}
+          {error && <p className="error-message">{error}</p>}
+        </div>
+      </section>
+    </main>
   );
 }

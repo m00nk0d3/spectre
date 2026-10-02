@@ -86,6 +86,15 @@ describe("Spawn Python Server Module", () => {
     expect(content).toMatch(/export.*function.*detectPython/i);
   });
 
+  it("should prefer the managed Python runtime", async () => {
+    const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
+    const fs = await import("fs");
+    const content = fs.readFileSync(scriptPath, "utf8");
+
+    expect(content).toContain("SPECTRE_PYTHON_RUNTIME");
+    expect(content).toContain("getManagedPythonPath");
+  });
+
   it("should spawn with uvicorn command", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
     const fs = await import("fs");
@@ -94,12 +103,14 @@ describe("Spawn Python Server Module", () => {
     expect(content).toMatch(/uvicorn/i);
   });
 
-  it("should spawn on port 1234", async () => {
+  it("should spawn on a dedicated configurable port", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
     const fs = await import("fs");
     const content = fs.readFileSync(scriptPath, "utf8");
 
     expect(content).toMatch(/\-\-port/i);
+    expect(content).toContain("TTS_SERVER_PORT");
+    expect(content).toContain("1235");
   });
 
   it("should handle GPU marker in stdout", async () => {
@@ -115,7 +126,7 @@ describe("Spawn Python Server Module", () => {
     const fs = await import("fs");
     const content = fs.readFileSync(scriptPath, "utf8");
 
-    expect(content).toMatch(/ready.*=.*true/i);
+    expect(content).toMatch(/ready\s*:\s*true/i);
   });
 
   it("should return object with pid and ready properties", async () => {
@@ -148,6 +159,15 @@ describe("Spawn Python Server Module", () => {
     const content = fs.readFileSync(scriptPath, "utf8");
 
     expect(content).toMatch(/env:.*process\.env/i);
+  });
+
+  it("should resolve packaged Python files outside app.asar", async () => {
+    const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
+    const fs = await import("fs");
+    const content = fs.readFileSync(scriptPath, "utf8");
+
+    expect(content).toContain("app.asar.unpacked");
+    expect(content).toContain("process.resourcesPath");
   });
 });
 
