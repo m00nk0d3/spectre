@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { streamLMStudioResponse } from "../src/main/lm-studio";
+import {
+  routeDirectToolCalls,
+  streamLMStudioResponse,
+} from "../src/main/lm-studio";
 
 function streamingResponse(events: object[]): Response {
   const body = events
@@ -36,6 +39,25 @@ afterEach(() => {
 });
 
 describe("LM Studio tool calling", () => {
+  it("routes vault searches and explicit wikilinks deterministically", () => {
+    expect(
+      routeDirectToolCalls("What does my vault say about Bonsai?"),
+    ).toMatchObject([{
+      function: {
+        name: "search_obsidian_vault",
+        arguments: expect.stringContaining("Bonsai"),
+      },
+    }]);
+    expect(
+      routeDirectToolCalls("Read [[30 Knowledge/Bonsai]] from my vault"),
+    ).toMatchObject([{
+      function: {
+        name: "read_obsidian_note",
+        arguments: '{"path":"30 Knowledge/Bonsai.md"}',
+      },
+    }]);
+  });
+
   it("routes known time intent directly to the local tool", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(streamingResponse([

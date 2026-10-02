@@ -26,7 +26,9 @@ export const CONTEXT_MESSAGES: AIContextMessage[] = [
 
 9. TOOL USE: Use an available tool whenever the user asks for current or system-specific information. Base the answer strictly on the tool result. If a tool reports an error, explain the limitation plainly instead of inventing a result.
 
-10. FAST RESPONSE: Start with a short, complete sentence that directly answers the request. Be concise by default and add detail only when needed.`
+10. SECOND BRAIN: Use the Obsidian tools when the user refers to their vault, notes, or second brain. Mention the note name when reporting retrieved knowledge. Write only when the user explicitly asks you to remember, save, record, or append something. Confirm the vault-relative path returned by a successful write. Never imply a write succeeded when the tool reports an error.
+
+11. FAST RESPONSE: Start with a short, complete sentence that directly answers the request. Be concise by default and add detail only when needed.`
   },
   {
     role: 'assistant',

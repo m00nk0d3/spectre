@@ -15,8 +15,9 @@ Digital Noir orb.
 4. LM Studio streams `qwen/qwen3.5-9b` from
    `http://127.0.0.1:1234/v1/chat/completions` with the US English
    `CONTEXT_MESSAGES`. OpenAI-compatible tool calls can retrieve the current
-   date/time and read-only local system status; execution is bounded to four
-   calls per request.
+   date/time, local system status, and the user's Obsidian second brain.
+   Vault access supports secure search, read, create, and append operations;
+   execution is bounded to four calls per request.
 5. `SentenceChunker` emits grammatical `.?!;:` boundaries, strategic commas,
    and max-length word-boundary chunks without dropping punctuation.
 6. Each chunk is synthesized serially by local Kokoro at
@@ -56,6 +57,13 @@ model for every utterance. Set `WHISPER_BACKEND_PATH` to choose another
 whisper.cpp backend. Its decoding prompt targets US English and its
 hotword list preserves common Spectre stack names.
 
+Spectre discovers the active vault from
+`~/.config/obsidian/obsidian.json`. Set `SPECTRE_OBSIDIAN_VAULT` to use a
+different vault. Vault writes are append-only and restricted to the standard
+`00 Inbox`, `10 Projects`, `20 Decisions`, `30 Knowledge`, and `40 Sessions`
+folders. Hidden paths, traversal, external symlinks, oversized notes, and
+content resembling credentials are rejected.
+
 Start LM Studio on port 1234 with `qwen/qwen3.5-9b` loaded, then run:
 
 ```bash
@@ -87,7 +95,9 @@ builds.
   pipeline and temporary-file cleanup.
 - `src/main/sentence-chunker.ts`: incremental grammatical text chunking.
 - `src/main/lm-studio.ts`: SSE chat-completion stream.
-- `src/main/spectre-tools.ts`: validated read-only local tool registry.
+- `src/main/spectre-tools.ts`: validated local tool registry and dispatch.
+- `src/main/obsidian-vault.ts`: contained vault discovery, retrieval, and
+  append-only writes.
 - `src/main/kokoro-client.ts`: local WAV synthesis.
 - `src/renderer/vad.ts`: MicVAD callback integration.
 - `src/renderer/audio-playback-queue.ts`: sequence ordering, gapless scheduling,

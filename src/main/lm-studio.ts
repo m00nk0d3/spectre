@@ -58,8 +58,11 @@ const DATETIME_INTENT =
 const SYSTEM_INTENT =
   /\b(system status|computer status|uptime|load average|available memory|memory usage|operating system|system architecture)\b/i;
 const EXPLICIT_TOOL_INTENT = /\buse (?:a |your )?tool\b/i;
+const VAULT_INTENT = /\b(vault|obsidian|second brain|my notes?)\b/i;
+const VAULT_WRITE_INTENT =
+  /\b(?:remember|save|write|add|append|capture|record|note down)\b[\s\S]*\b(?:vault|obsidian|second brain|notes?)\b|\bremember (?:that|this|my)\b/i;
 
-function directToolCalls(prompt: string): ToolCall[] {
+export function routeDirectToolCalls(prompt: string): ToolCall[] {
   const toolCalls: ToolCall[] = [];
   if (DATETIME_INTENT.test(prompt)) {
     const timezone = prompt.match(/\b[A-Z][a-z]+\/[A-Z][A-Za-z_]+\b/)?.[0];
@@ -81,6 +84,30 @@ function directToolCalls(prompt: string): ToolCall[] {
         arguments: "{}",
       },
     });
+  }
+  if (VAULT_INTENT.test(prompt) && !VAULT_WRITE_INTENT.test(prompt)) {
+    const wikilink = prompt.match(/\[\[([^\]#]+)(?:#[^\]]*)?\]\]/)?.[1];
+    if (wikilink) {
+      toolCalls.push({
+        id: "spectre-tool-vault-read",
+        type: "function",
+        function: {
+          name: "read_obsidian_note",
+          arguments: JSON.stringify({
+            path: wikilink.endsWith(".md") ? wikilink : `${wikilink}.md`,
+          }),
+        },
+      });
+    } else {
+      toolCalls.push({
+        id: "spectre-tool-vault-search",
+        type: "function",
+        function: {
+          name: "search_obsidian_vault",
+          arguments: JSON.stringify({ query: prompt, limit: 5 }),
+        },
+      });
+    }
   }
   return toolCalls;
 }
@@ -129,8 +156,15 @@ async function selectRequiredTools(
   endpoint: string,
   model: string,
   apiKey: string,
+  allowedToolNames: string[],
   signal?: AbortSignal,
 ): Promise<ToolCall[]> {
+  const tools = SPECTRE_TOOLS.filter(
+    (tool) => allowedToolNames.includes(tool.function.name),
+  );
+  if (tools.length === 0) {
+    throw new Error("No eligible Spectre tools were provided");
+  }
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -147,7 +181,7 @@ async function selectRequiredTools(
         enable_thinking: false,
       },
       messages,
-      tools: SPECTRE_TOOLS,
+      tools,
       tool_choice: "required",
     }),
     signal,
@@ -197,10 +231,29 @@ export async function* streamLMStudioResponse(
     { role: "user", content: prompt },
   ];
 
-  let toolCalls = directToolCalls(prompt);
-  if (toolCalls.length === 0 && EXPLICIT_TOOL_INTENT.test(prompt)) {
+  let toolCalls = routeDirectToolCalls(prompt);
+  if (toolCalls.length === 0 && VAULT_WRITE_INTENT.test(prompt)) {
     toolCalls = await selectRequiredTools(
-      messages, endpoint, model, apiKey, config.signal,
+      messages,
+      endpoint,
+      model,
+      apiKey,
+      ["append_obsidian_note"],
+      config.signal,
+    );
+  } else if (toolCalls.length === 0 && EXPLICIT_TOOL_INTENT.test(prompt)) {
+    toolCalls = await selectRequiredTools(
+      messages,
+      endpoint,
+      model,
+      apiKey,
+      [
+        "get_current_datetime",
+        "get_system_status",
+        "search_obsidian_vault",
+        "read_obsidian_note",
+      ],
+      config.signal,
     );
   }
   if (toolCalls.length > 0) {

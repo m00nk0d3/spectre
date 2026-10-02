@@ -59,6 +59,12 @@ describe("Spectre tools", () => {
   it("publishes only the supported read-only tools", () => {
     expect(
       SPECTRE_TOOLS.map((tool) => tool.function.name),
-    ).toEqual(["get_current_datetime", "get_system_status"]);
+    ).toEqual([
+      "get_current_datetime",
+      "get_system_status",
+      "search_obsidian_vault",
+      "read_obsidian_note",
+      "append_obsidian_note",
+    ]);
   });
 });
