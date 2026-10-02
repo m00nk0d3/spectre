@@ -34,6 +34,15 @@ function toolSelectionResponse(): Response {
   });
 }
 
+function loadedModelsResponse(...ids: string[]): Response {
+  return Response.json({
+    models: [{
+      type: "llm",
+      loaded_instances: ids.map((id) => ({ id })),
+    }],
+  });
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -60,6 +69,7 @@ describe("LM Studio tool calling", () => {
 
   it("routes known time intent directly to the local tool", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(loadedModelsResponse("current-model"))
       .mockResolvedValueOnce(streamingResponse([
         {
           choices: [{
@@ -74,15 +84,17 @@ describe("LM Studio tool calling", () => {
     }
 
     expect(result).toBe("It is Thursday evening, sir.");
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     const responseRequest = JSON.parse(
-      String(fetchMock.mock.calls[0][1]?.body),
+      String(fetchMock.mock.calls[1][1]?.body),
     ) as {
       messages: Array<Record<string, unknown>>;
       max_tokens: number;
+      model: string;
       tools?: unknown;
     };
+    expect(responseRequest.model).toBe("current-model");
     expect(responseRequest.messages.at(-2)).toMatchObject({
       role: "assistant",
       tool_calls: [{
@@ -103,6 +115,7 @@ describe("LM Studio tool calling", () => {
 
   it("asks the model to select a tool only for ambiguous tool requests", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(loadedModelsResponse("current-model"))
       .mockResolvedValueOnce(toolSelectionResponse())
       .mockResolvedValueOnce(streamingResponse([
         { choices: [{ delta: { content: "It is ready, sir." } }] },
@@ -116,9 +129,9 @@ describe("LM Studio tool calling", () => {
     }
 
     expect(result).toBe("It is ready, sir.");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     const selectionRequest = JSON.parse(
-      String(fetchMock.mock.calls[0][1]?.body),
+      String(fetchMock.mock.calls[1][1]?.body),
     ) as Record<string, unknown>;
     expect(selectionRequest).toMatchObject({
       stream: false,
@@ -129,6 +142,7 @@ describe("LM Studio tool calling", () => {
 
   it("streams ordinary responses without a tool-selection request", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(loadedModelsResponse("current-model"))
       .mockResolvedValueOnce(streamingResponse([
         { choices: [{ delta: { content: "Certainly, " } }] },
         { choices: [{ delta: { content: "sir." } }] },
@@ -138,18 +152,24 @@ describe("LM Studio tool calling", () => {
     for await (const token of streamLMStudioResponse("Hello")) result += token;
 
     expect(result).toBe("Certainly, sir.");
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "http://127.0.0.1:1234/api/v1/models",
+    );
     const request = JSON.parse(
-      String(fetchMock.mock.calls[0][1]?.body),
+      String(fetchMock.mock.calls[1][1]?.body),
     ) as Record<string, unknown>;
     expect(request.tools).toBeUndefined();
+    expect(request.model).toBe("current-model");
     expect(request.max_tokens).toBe(256);
   });
 
   it("fails when LM Studio omits a required tool call", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({
-      choices: [{ message: { role: "assistant", content: "I guessed." } }],
-    }));
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(loadedModelsResponse("current-model"))
+      .mockResolvedValueOnce(Response.json({
+        choices: [{ message: { role: "assistant", content: "I guessed." } }],
+      }));
 
     const consume = async () => {
       for await (
@@ -162,5 +182,43 @@ describe("LM Studio tool calling", () => {
     await expect(consume()).rejects.toThrow(
       "did not return the required tool call",
     );
+  });
+
+  it("requires an explicit override when multiple LLMs are loaded", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      loadedModelsResponse("first-model", "second-model"),
+    );
+
+    const consume = async () => {
+      for await (const token of streamLMStudioResponse("Hello")) void token;
+    };
+
+    await expect(consume()).rejects.toThrow(
+      "multiple loaded LLMs; set LM_STUDIO_MODEL",
+    );
+  });
+
+  it("uses an explicit model override without discovery", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      streamingResponse([
+        { choices: [{ delta: { content: "Ready." } }] },
+      ]),
+    );
+
+    let result = "";
+    for await (
+      const token of streamLMStudioResponse("Hello", {
+        model: "chosen-model",
+      })
+    ) {
+      result += token;
+    }
+
+    expect(result).toBe("Ready.");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const request = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body),
+    ) as Record<string, unknown>;
+    expect(request.model).toBe("chosen-model");
   });
 });

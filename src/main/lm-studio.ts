@@ -37,6 +37,15 @@ interface ToolSelectionResponse {
   }>;
 }
 
+interface LMStudioModelsResponse {
+  models?: Array<{
+    type?: string;
+    loaded_instances?: Array<{
+      id?: string;
+    }>;
+  }>;
+}
+
 type ChatMessage =
   | { role: "system" | "user" | "assistant"; content: string }
   | {
@@ -117,6 +126,38 @@ async function readError(response: Response): Promise<never> {
   throw new Error(
     `LM Studio returned ${response.status}: ${details || response.statusText}`,
   );
+}
+
+async function resolveLoadedModel(
+  baseUrl: string,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const serverUrl = baseUrl.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+  const response = await fetch(`${serverUrl}/api/v1/models`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    signal,
+  });
+  if (!response.ok) await readError(response);
+
+  const body = await response.json() as LMStudioModelsResponse;
+  const loadedModels = (body.models ?? [])
+    .filter((model) => model.type === "llm")
+    .flatMap((model) => model.loaded_instances ?? [])
+    .map((instance) => instance.id?.trim())
+    .filter((id): id is string => Boolean(id));
+
+  if (loadedModels.length === 0) {
+    throw new Error("LM Studio has no loaded LLM");
+  }
+  if (loadedModels.length > 1) {
+    throw new Error(
+      "LM Studio has multiple loaded LLMs; set LM_STUDIO_MODEL to choose one",
+    );
+  }
+  return loadedModels[0];
 }
 
 async function appendToolResults(
@@ -216,15 +257,18 @@ export async function* streamLMStudioResponse(
   prompt: string,
   config: LMStudioConfig = {},
 ): AsyncGenerator<string> {
-  const baseUrl = config.baseUrl
+  const baseUrl = (
+    config.baseUrl
     ?? process.env.LM_STUDIO_BASE_URL
-    ?? "http://127.0.0.1:1234/v1";
-  const model = config.model
-    ?? process.env.LM_STUDIO_MODEL
-    ?? "qwen/qwen3.5-9b";
+    ?? "http://127.0.0.1:1234/v1"
+  ).replace(/\/+$/, "");
   const apiKey = config.apiKey
     ?? process.env.LM_STUDIO_API_KEY
     ?? "lm-studio";
+  const configuredModel = config.model?.trim()
+    || process.env.LM_STUDIO_MODEL?.trim();
+  const model = configuredModel
+    || await resolveLoadedModel(baseUrl, apiKey, config.signal);
   const endpoint = `${baseUrl}/chat/completions`;
   const messages: ChatMessage[] = [
     ...CONTEXT_MESSAGES,

@@ -33,8 +33,8 @@ For each speech segment it:
 
 1. writes a unique WAV below `app.getPath("userData")`;
 2. invokes the existing Whisper.cpp handler;
-3. streams LM Studio using the US English system context and default
-   `qwen/qwen3.5-9b`;
+3. discovers and streams the LLM currently loaded in LM Studio using the US
+   English system context;
 4. feeds every token to `SentenceChunker`;
 5. serializes Kokoro `/tts` calls and emits numbered WAV events;
 6. emits state, transcript, incremental reply, completion, and explicit error

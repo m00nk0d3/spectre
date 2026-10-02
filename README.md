@@ -19,8 +19,8 @@ curl -fsSL \
 bash /tmp/install-spectre.sh
 ```
 
-LM Studio and `qwen/qwen3.5-9b` remain separate local prerequisites. Run LM
-Studio on port 1234 before launching `spectre`.
+LM Studio remains a separate local prerequisite. Load any chat model and run
+LM Studio on port 1234 before launching `spectre`.
 
 Install a specific release or skip the large managed voice runtime:
 
@@ -48,7 +48,7 @@ Spectre user configuration.
    `ConversationOrchestrator`.
 3. Main writes a temporary WAV under Electron's `userData` directory,
    transcribes it with Whisper.cpp, then removes it in `finally`.
-4. LM Studio streams `qwen/qwen3.5-9b` from
+4. Spectre discovers the LLM currently loaded in LM Studio and streams it from
    `http://127.0.0.1:1234/v1/chat/completions` with the US English
    `CONTEXT_MESSAGES`. OpenAI-compatible tool calls can retrieve the current
    date/time, local system status, and the user's Obsidian second brain.
@@ -100,7 +100,11 @@ different vault. Vault writes are append-only and restricted to the standard
 folders. Hidden paths, traversal, external symlinks, oversized notes, and
 content resembling credentials are rejected.
 
-Start LM Studio on port 1234 with `qwen/qwen3.5-9b` loaded, then run:
+Start LM Studio on port 1234 and load the chat model you want Spectre to use.
+Spectre discovers the single loaded LLM through LM Studio's local API. If
+multiple LLMs are loaded, set `LM_STUDIO_MODEL` to the desired instance ID.
+
+Then run:
 
 ```bash
 npm run dev
@@ -109,7 +113,8 @@ npm run dev
 The Electron main process starts the Kokoro FastAPI service on dedicated port
 1235. `TTS_SERVER_PORT`, `TTS_VOICE`, `KOKORO_LANG_CODE`,
 `LM_STUDIO_BASE_URL`, `LM_STUDIO_MODEL`, `WHISPER_CPP_PATH`, and
-`WHISPER_MODEL_PATH` can override defaults.
+`WHISPER_MODEL_PATH` can override defaults. `LM_STUDIO_MODEL` is optional and
+only needed to select among multiple loaded LLMs.
 
 ## Validation and packaging
 
