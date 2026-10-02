@@ -40,7 +40,7 @@ The managed Python 3.12 runtime is stored at
 `SPECTRE_PYTHON_RUNTIME`, or set `PYTHON_CMD` to use another compatible
 interpreter.
 
-The managed Whisper.cpp runtime and multilingual base model are stored at
+The managed Whisper.cpp runtime and multilingual small model are stored at
 `${XDG_DATA_HOME:-$HOME/.local/share}/spectre/whisper`. Override that location
 with `SPECTRE_WHISPER_RUNTIME`, or use `WHISPER_CPP_PATH` and
 `WHISPER_MODEL_PATH` for a custom installation. Spectre selects the optimized

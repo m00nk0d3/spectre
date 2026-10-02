@@ -50,14 +50,14 @@ for (const artifact of artifacts) {
   run("bsdtar", ["-xf", destination, "-C", extractedDirectory]);
 }
 
-const modelPath = path.join(modelDirectory, "ggml-base.bin");
+const modelPath = path.join(modelDirectory, "ggml-small.bin");
 if (!existsSync(modelPath)) {
   run("curl", [
     "--fail",
     "--location",
     "--output",
     modelPath,
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
   ]);
 }
 

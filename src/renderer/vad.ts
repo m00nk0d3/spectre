@@ -38,6 +38,9 @@ export function createVad(config: VadConfig = {}) {
       processorType: "AudioWorklet",
       baseAssetPath: assetBaseUrl,
       onnxWASMBasePath: assetBaseUrl,
+      positiveSpeechThreshold: 0.5,
+      negativeSpeechThreshold: 0.35,
+      minSpeechMs: 500,
       redemptionMs: silenceTimeoutMs,
       onSpeechStart: async () => {
         state.isSpeaking = true;
