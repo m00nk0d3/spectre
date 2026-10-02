@@ -12,7 +12,7 @@ export interface VadConfig {
   onError?: (error: Error) => void;
 }
 
-const DEFAULT_SILENCE_TIMEOUT_MS = 1500;
+const DEFAULT_SILENCE_TIMEOUT_MS = 700;
 
 export function createVad(config: VadConfig = {}) {
   const silenceTimeoutMs =

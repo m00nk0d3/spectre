@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { getTTSServerUrl } from "../../scripts/spawn-python-server";
 
 function getManagedWhisperPaths() {
   const dataHome = process.env.XDG_DATA_HOME
@@ -53,6 +54,38 @@ export function sanitizeShellArgument(arg: string): string {
   // Remove $ (variable expansion)
   escaped = escaped.replace(/\$/g, "");
   return escaped;
+}
+
+export async function transcribeWithFasterWhisper(
+  wavPath: string,
+): Promise<string> {
+  if (!wavPath || !fs.existsSync(wavPath)) {
+    throw new Error(`WAV file does not exist at path: ${wavPath}`);
+  }
+
+  const audio = await fs.promises.readFile(wavPath);
+  const response = await fetch(`${getTTSServerUrl()}/transcribe`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "audio/wav",
+    },
+    body: audio,
+  });
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(
+      `Faster Whisper returned ${response.status}: ${
+        details || response.statusText
+      }`,
+    );
+  }
+
+  const payload = await response.json() as { text?: unknown };
+  if (typeof payload.text !== "string" || !payload.text.trim()) {
+    throw new Error("No transcription output from Faster Whisper");
+  }
+  console.log("[WHISPER] Transcription:", payload.text);
+  return payload.text.trim();
 }
 
 export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: string): Promise<string> {

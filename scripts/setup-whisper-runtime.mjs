@@ -11,6 +11,10 @@ const runtimeRoot = process.env.SPECTRE_WHISPER_RUNTIME
 const packagesDirectory = path.join(runtimeRoot, "packages");
 const extractedDirectory = path.join(runtimeRoot, "runtime");
 const modelDirectory = path.join(runtimeRoot, "models");
+const pythonRuntime = process.env.SPECTRE_PYTHON_RUNTIME
+  || path.join(dataHome, "spectre", "python");
+const pythonPath = path.join(pythonRuntime, "bin", "python");
+const fasterWhisperDirectory = path.join(runtimeRoot, "faster-whisper");
 
 const artifacts = [
   {
@@ -60,5 +64,18 @@ if (!existsSync(modelPath)) {
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
   ]);
 }
+
+if (!existsSync(pythonPath)) {
+  throw new Error(
+    `Managed Python runtime not found at ${pythonPath}. Run npm run setup:python first.`,
+  );
+}
+run(pythonPath, [
+  "-c",
+  [
+    "from faster_whisper import WhisperModel",
+    `WhisperModel("small", device="cpu", compute_type="int8", download_root=${JSON.stringify(fasterWhisperDirectory)})`,
+  ].join(";"),
+]);
 
 console.log(`[SPECTRE] Managed Whisper runtime ready at ${runtimeRoot}`);

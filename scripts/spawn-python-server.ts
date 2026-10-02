@@ -91,8 +91,11 @@ export async function spawnPythonServer(
 
       try {
         const response = await fetch(`${getTTSServerUrl()}/health`);
-        const health = await response.json() as { ready?: boolean };
-        if (!response.ok || !health.ready) return;
+        const health = await response.json() as {
+          ready?: boolean;
+          whisper_ready?: boolean;
+        };
+        if (!response.ok || !health.ready || !health.whisper_ready) return;
 
         resolved = true;
         clearInterval(healthInterval);

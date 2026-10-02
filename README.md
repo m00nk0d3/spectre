@@ -40,12 +40,15 @@ The managed Python 3.12 runtime is stored at
 `SPECTRE_PYTHON_RUNTIME`, or set `PYTHON_CMD` to use another compatible
 interpreter.
 
-The managed Whisper.cpp runtime and multilingual small model are stored at
+The managed Whisper runtimes and multilingual small models are stored at
 `${XDG_DATA_HOME:-$HOME/.local/share}/spectre/whisper`. Override that location
 with `SPECTRE_WHISPER_RUNTIME`, or use `WHISPER_CPP_PATH` and
 `WHISPER_MODEL_PATH` for a custom installation. Spectre selects the optimized
 Haswell/AVX2 GGML backend when the CPU supports it and otherwise uses the
-portable x64 backend. Set `WHISPER_BACKEND_PATH` to choose another backend.
+portable x64 backend for legacy whisper.cpp calls. Live conversations use a
+warm CTranslate2 int8 model in the local Python service to avoid loading a new
+model for every utterance. Set `WHISPER_BACKEND_PATH` to choose another
+whisper.cpp backend.
 
 Start LM Studio on port 1234 with `qwen/qwen3.5-9b` loaded, then run:
 

@@ -5,7 +5,7 @@ import { createWavBuffer } from "@/utils/audio-converter";
 import { synthesizeSpeech } from "./kokoro-client";
 import { streamLMStudioResponse } from "./lm-studio";
 import { SentenceChunker } from "./sentence-chunker";
-import { transcribeWithWhisperCpp } from "./whisper";
+import { transcribeWithFasterWhisper } from "./whisper";
 
 export interface ConversationDependencies {
   transcribe: (wavPath: string) => Promise<string>;
@@ -39,10 +39,7 @@ export class ConversationOrchestrator {
     this.workDirectory = options.workDirectory;
     this.emit = options.emit;
     this.dependencies = {
-      transcribe: (wavPath) => transcribeWithWhisperCpp(
-        wavPath,
-        process.env.WHISPER_MODEL_PATH,
-      ),
+      transcribe: transcribeWithFasterWhisper,
       streamResponse: (transcript, signal) => streamLMStudioResponse(
         transcript,
         { signal },
