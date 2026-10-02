@@ -9,8 +9,8 @@ export class SentenceChunker {
   private readonly maxChunkLength: number;
 
   constructor(options: SentenceChunkerOptions = {}) {
-    this.minCommaChunkLength = options.minCommaChunkLength ?? 90;
-    this.maxChunkLength = options.maxChunkLength ?? 220;
+    this.minCommaChunkLength = options.minCommaChunkLength ?? 48;
+    this.maxChunkLength = options.maxChunkLength ?? 140;
   }
 
   push(token: string): string[] {

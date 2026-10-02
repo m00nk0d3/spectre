@@ -20,7 +20,9 @@ export const CONTEXT_MESSAGES: AIContextMessage[] = [
 
 6. PORTUGUÊS NATURAL: Use português brasileiro coloquial mas polido. Evite traduções literais de inglês. Soe como um brasileiro que fala naturalmente.
 
-7. Voz Clara: Suas respostas devem ser claras para síntese de voz TTS. Evite ambiguidades e gírias muito regionais.`
+7. VOZ CLARA: Suas respostas devem ser claras para síntese de voz TTS. Evite ambiguidades e gírias muito regionais.
+
+8. RESPOSTA RÁPIDA: Comece com uma frase curta e completa que responda diretamente ao pedido. Seja conciso por padrão e só aprofunde quando necessário.`
   },
   {
     role: 'assistant',

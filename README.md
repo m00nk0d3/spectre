@@ -43,7 +43,9 @@ interpreter.
 The managed Whisper.cpp runtime and multilingual base model are stored at
 `${XDG_DATA_HOME:-$HOME/.local/share}/spectre/whisper`. Override that location
 with `SPECTRE_WHISPER_RUNTIME`, or use `WHISPER_CPP_PATH` and
-`WHISPER_MODEL_PATH` for a custom installation.
+`WHISPER_MODEL_PATH` for a custom installation. Spectre selects the optimized
+Haswell/AVX2 GGML backend when the CPU supports it and otherwise uses the
+portable x64 backend. Set `WHISPER_BACKEND_PATH` to choose another backend.
 
 Start LM Studio on port 1234 with `qwen/qwen3.5-9b` loaded, then run:
 

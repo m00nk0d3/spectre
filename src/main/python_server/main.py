@@ -4,7 +4,7 @@ import os
 
 from fastapi import FastAPI, HTTPException, Response
 from kokoro import KPipeline
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import numpy as np
 import soundfile as sf
 import torch
@@ -20,6 +20,7 @@ pipeline: KPipeline | None = None
 class TTSPayload(BaseModel):
     text: str
     voice: str = DEFAULT_VOICE
+    speed: float = Field(default=1.1, ge=0.5, le=2.0)
 
 
 @asynccontextmanager
@@ -65,7 +66,7 @@ async def generate_tts(payload: TTSPayload):
             for _graphemes, _phonemes, audio in pipeline(
                 text,
                 voice=payload.voice,
-                speed=1,
+                speed=payload.speed,
             )
         ]
     except Exception as error:

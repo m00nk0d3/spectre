@@ -13,13 +13,32 @@ function getManagedWhisperPaths() {
     executable: path.join(runtime, "bin", "whisper-cli"),
     model: path.join(root, "models", "ggml-base.bin"),
     libraryPath: path.join(runtime, "lib"),
-    backendPath: path.join(
+    genericBackendPath: path.join(
       runtime,
       "lib",
       "ggml",
       "libggml-cpu-x64.so",
     ),
+    optimizedBackendPath: path.join(
+      runtime,
+      "lib",
+      "ggml",
+      "libggml-cpu-haswell.so",
+    ),
   };
+}
+
+function getWhisperBackend(
+  managed: ReturnType<typeof getManagedWhisperPaths>,
+): string {
+  const override = process.env.WHISPER_BACKEND_PATH;
+  if (override) return override;
+
+  const cpuInfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+  const supportsHaswell = /\bavx2\b/.test(cpuInfo) && /\bfma\b/.test(cpuInfo);
+  return supportsHaswell && fs.existsSync(managed.optimizedBackendPath)
+    ? managed.optimizedBackendPath
+    : managed.genericBackendPath;
 }
 
 /**
@@ -61,9 +80,11 @@ export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: stri
     path.normalize(resolvedModelPath),
   );
   const sanitizedWavPath = sanitizeShellArgument(wavPath);
+  const backendPath = getWhisperBackend(managed);
 
   const cmd = `"${whisperPath}" -f "${sanitizedWavPath}" -m "${sanitizedModelPath}" -l pt --no-gpu --no-timestamps`;
 
+  console.log(`[WHISPER] Backend: ${path.basename(backendPath)}`);
   console.log("[WHISPER] Executing:", cmd);
 
   const { exec } = await import("child_process");
@@ -71,11 +92,14 @@ export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: stri
     exec(cmd, {
       env: {
         ...process.env,
-        GGML_BACKEND_PATH: managed.backendPath,
+        GGML_BACKEND_PATH: backendPath,
         LD_LIBRARY_PATH: [
           managed.libraryPath,
           process.env.LD_LIBRARY_PATH,
-        ].filter(Boolean).join(path.delimiter),
+        ].filter(
+          (entry): entry is string =>
+            typeof entry === "string" && fs.existsSync(entry),
+        ).join(path.delimiter),
       },
     }, (error: Error | null, stdout: string, stderr: string) => {
       if (error) {

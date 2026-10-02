@@ -145,6 +145,7 @@ function registerIpcHandlers(): void {
         body: JSON.stringify({
           text,
           voice: process.env.TTS_VOICE || "pf_dora",
+          speed: Number(process.env.TTS_SPEED) || 1.1,
           response_format: "wav",
         }),
         signal: controller.signal,
