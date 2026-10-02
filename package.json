@@ -14,7 +14,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "vite preview",
-    "build:electron": "electron-builder --config electron-builder.jsonc --linux AppImage deb",
+    "build:electron": "electron-builder --config electron-builder.jsonc --linux AppImage deb --publish never",
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint . --ext ts,tsx",
     "type-check": "tsc --noEmit",

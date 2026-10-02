@@ -50,6 +50,14 @@ afterEach(async () => {
 });
 
 describe("release scripts", () => {
+  it("leaves GitHub publishing to the release workflow", async () => {
+    const packageJson = JSON.parse(
+      await readFile(path.join(PROJECT_ROOT, "package.json"), "utf8"),
+    ) as { scripts: Record<string, string> };
+
+    expect(packageJson.scripts["build:electron"]).toContain("--publish never");
+  });
+
   it("stages the complete checksummed release asset set", async () => {
     const result = run(
       path.join(PROJECT_ROOT, "scripts", "prepare-release-assets.sh"),
