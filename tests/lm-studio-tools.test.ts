@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isUsableLongFormPresentation,
+  requiredMutationToolNames,
   routeDirectToolCalls,
   streamLMStudioResponse,
 } from "../src/main/lm-studio";
@@ -147,6 +148,71 @@ describe("LM Studio tool calling", () => {
         arguments: '{"path":"30 Knowledge/Bonsai.md"}',
       },
     }]);
+  });
+
+  it("requires an Obsidian mutation for create-note requests", () => {
+    const prompt =
+      "Create a new MD with the Spectre Persona specifications on the vault, please.";
+
+    expect(requiredMutationToolNames(prompt)).toEqual([
+      "append_obsidian_note",
+    ]);
+    expect(routeDirectToolCalls(prompt)).toEqual([]);
+  });
+
+  it("never claims a cancelled Obsidian write succeeded", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({
+        choices: [{
+          message: {
+            role: "assistant",
+            content: "",
+            tool_calls: [{
+              id: "write_note",
+              type: "function",
+              function: {
+                name: "append_obsidian_note",
+                arguments: JSON.stringify({
+                  path: "30 Knowledge/Spectre Persona.md",
+                  content: "# Spectre Persona\n\nPlayful and capable.",
+                }),
+              },
+            }],
+          },
+        }],
+      }))
+      .mockResolvedValueOnce(noToolSelectionResponse());
+
+    let result = "";
+    for await (const chunk of streamLMStudioResponse(
+      "Create a new MD with the Spectre Persona specifications on the vault, please.",
+      {
+        model: "test-model",
+        callerPolicy: {
+          allowedToolNames: ["append_obsidian_note"],
+          toolExecutionContext: {
+            confirmMutation: async () => false,
+          },
+        },
+      },
+    )) {
+      result += chunk;
+    }
+
+    expect(result).toBe(
+      "I didn't make that change because it wasn't confirmed.",
+    );
+    const selection = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body),
+    ) as {
+      tool_choice: string;
+      tools: Array<{ function: { name: string } }>;
+    };
+    expect(selection.tool_choice).toBe("required");
+    expect(selection.tools.map((tool) => tool.function.name)).toEqual([
+      "append_obsidian_note",
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("routes GitHub activity questions to the local monitor", () => {
@@ -1219,7 +1285,7 @@ describe("LM Studio tool calling", () => {
     );
     expect(request.messages.at(-2)).toEqual({
       role: "assistant",
-      content: "Of course. Tell me what you need.",
+      content: "Yeah, man. What are we getting ourselves into?",
     });
     expect(request.messages.at(-1)).toEqual({
       role: "user",

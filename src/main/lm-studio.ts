@@ -1,6 +1,7 @@
 import { CONTEXT_MESSAGES } from "@/ai/messages/context";
 import {
   executeSpectreTool,
+  SPECTRE_MUTATION_TOOLS,
   SPECTRE_TOOLS,
   type SpectreToolExecutionContext,
 } from "./spectre-tools";
@@ -98,6 +99,10 @@ const MAX_RESPONSE_TOKENS = 256;
 interface ToolExecutionMetadata {
   webAttempted: boolean;
   readableWebSources: string[];
+  mutationAttempted: boolean;
+  mutationSucceeded: boolean;
+  mutationCancelled: boolean;
+  mutationFailed: boolean;
   structuredResult?: StructuredToolResult;
 }
 
@@ -113,7 +118,13 @@ const GITHUB_CLI_GUIDE_INTENT =
   /\b(?:gh(?:\s+(?:tool|cli))?|github\s+cli)\b/i;
 const VAULT_INTENT = /\b(vault|obsidian|second brain|my notes?)\b/i;
 const VAULT_WRITE_INTENT =
-  /\b(?:remember|save|write|add|append|capture|record|note down)\b[\s\S]*\b(?:vault|obsidian|second brain|notes?)\b|\bremember (?:that|this|my)\b/i;
+  /\b(?:remember|save|write|create|make|add|append|capture|record|note down|put)\b[\s\S]*\b(?:vault|obsidian|second brain|notes?|markdown|md)\b|\bremember (?:that|this|my)\b/i;
+const GITHUB_WRITE_INTENT =
+  /\b(?:create|close|reopen|edit|update|merge|approve|comment|label|assign|push|clone)\b[\s\S]*\b(?:github|repositories?|repos?|issues?|pull requests?|prs?)\b|\bopen\s+(?:a|an|the)\s+[\s\S]*\b(?:github|repositories?|repos?|issues?|pull requests?|prs?)\b/i;
+const SYSTEM_WRITE_INTENT =
+  /\b(?:create|write|save|delete|remove|rename|move|copy|make)\b[\s\S]*\b(?:files?|folders?|directories?)\b/i;
+const SANDCASTLE_WRITE_INTENT =
+  /\b(?:prepare|start|run|launch)\b[\s\S]*\b(?:sandcastle|workflows?)\b/i;
 const GITHUB_ACTIVITY_INTENT =
   /\b(?:github activity|new (?:pull requests?|prs?)|pull request updates?|pr updates?)\b/i;
 const GITHUB_REPOSITORY_LIST_INTENT =
@@ -147,6 +158,22 @@ export function isExplicitWebResearchRequest(prompt: string): boolean {
 
 export function isLongFormPresentationRequest(prompt: string): boolean {
   return LONG_FORM_PRESENTATION_INTENT.test(prompt);
+}
+
+export function requiredMutationToolNames(prompt: string): string[] {
+  if (VAULT_INTENT.test(prompt) && VAULT_WRITE_INTENT.test(prompt)) {
+    return ["append_obsidian_note"];
+  }
+  if (GITHUB_WRITE_INTENT.test(prompt)) {
+    return ["github_write"];
+  }
+  if (SYSTEM_WRITE_INTENT.test(prompt)) {
+    return ["system_write"];
+  }
+  if (SANDCASTLE_WRITE_INTENT.test(prompt)) {
+    return ["prepare_sandcastle_issue_workflow"];
+  }
+  return [];
 }
 
 export function isUsableLongFormPresentation(content: string): boolean {
@@ -464,6 +491,10 @@ async function appendToolResults(
   const metadata: ToolExecutionMetadata = {
     webAttempted: false,
     readableWebSources: [],
+    mutationAttempted: false,
+    mutationSucceeded: false,
+    mutationCancelled: false,
+    mutationFailed: false,
   };
   messages.push({
     role: "assistant",
@@ -514,11 +545,25 @@ async function appendToolResults(
       });
       console.info(`[SPECTRE-TOOL] Running ${toolCall.function.name}`);
       await onToolCall?.(toolCall.function.name);
+      const mutationTool = SPECTRE_MUTATION_TOOLS.has(
+        toolCall.function.name,
+      );
+      metadata.mutationAttempted ||= mutationTool;
       content = await executeSpectreTool(
         toolCall.function.name,
         toolCall.function.arguments,
         executionContext,
       );
+      if (mutationTool) {
+        const result = JSON.parse(content) as {
+          cancelled?: unknown;
+        };
+        if (result.cancelled === true) {
+          metadata.mutationCancelled = true;
+        } else {
+          metadata.mutationSucceeded = true;
+        }
+      }
       if (toolCall.function.name === "system_read") {
         const args = JSON.parse(toolCall.function.arguments) as {
           operation?: unknown;
@@ -786,6 +831,10 @@ async function appendToolResults(
       ) {
         metadata.webAttempted = true;
       }
+      if (SPECTRE_MUTATION_TOOLS.has(toolCall.function.name)) {
+        metadata.mutationAttempted = true;
+        metadata.mutationFailed = true;
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error(
         exposeToolErrors
@@ -1005,6 +1054,13 @@ export async function* streamLMStudioResponse(
   const allowedToolNames = config.callerPolicy
     ? [...config.callerPolicy.allowedToolNames]
     : ALL_TOOL_NAMES;
+  const requestedMutationTools = requiredMutationToolNames(prompt);
+  const requiredMutationTools = requestedMutationTools.filter(
+    (toolName) => allowedToolNames.includes(toolName),
+  );
+  const mutationUnavailable =
+    requestedMutationTools.length > 0
+    && requiredMutationTools.length === 0;
   const longFormPresentation = isLongFormPresentationRequest(prompt);
   const messages: ChatMessage[] = CONTEXT_MESSAGES.map((message, index) => {
     if (index !== 0 || message.role !== "system") {
@@ -1013,6 +1069,12 @@ export async function* streamLMStudioResponse(
     const additions = [
       config.callerPolicy?.wrapUntrustedInput ? undefined : memoryContext,
       config.callerPolicy?.additionalSystemInstructions,
+      mutationUnavailable
+        ? [
+            "The current caller is not authorized to perform the requested mutation.",
+            "State that limitation plainly and never claim that the action completed.",
+          ].join(" ")
+        : undefined,
       longFormPresentation
         ? LONG_FORM_PRESENTATION_INSTRUCTION
         : undefined,
@@ -1039,13 +1101,19 @@ export async function* streamLMStudioResponse(
       : prompt,
   });
 
-  let toolCalls = routeDirectToolCalls(prompt, memoryContext).filter(
-    (toolCall) => allowedToolNames.includes(toolCall.function.name),
-  );
+  let toolCalls = requestedMutationTools.length > 0
+    ? []
+    : routeDirectToolCalls(prompt, memoryContext).filter(
+        (toolCall) => allowedToolNames.includes(toolCall.function.name),
+      );
   const seenToolCalls = new Set<string>();
   const toolMetadata: ToolExecutionMetadata = {
     webAttempted: false,
     readableWebSources: [],
+    mutationAttempted: false,
+    mutationSucceeded: false,
+    mutationCancelled: false,
+    mutationFailed: false,
   };
   const extendedProgressRequested = (
     longFormPresentation
@@ -1085,14 +1153,24 @@ export async function* streamLMStudioResponse(
           message: "Planning how to complete this request",
         });
       }
-      toolCalls = await selectOptionalTools(
-        messages,
-        endpoint,
-        model,
-        apiKey,
-        allowedToolNames,
-        config.signal,
-      );
+      toolCalls = round === 0 && requiredMutationTools.length > 0
+        ? await selectTools(
+            messages,
+            endpoint,
+            model,
+            apiKey,
+            requiredMutationTools,
+            "required",
+            config.signal,
+          )
+        : await selectOptionalTools(
+            messages,
+            endpoint,
+            model,
+            apiKey,
+            allowedToolNames,
+            config.signal,
+          );
       if (toolCalls.length === 0) break;
       if (toolMetadata.structuredResult) {
         toolMetadata.structuredResult = undefined;
@@ -1133,6 +1211,10 @@ export async function* streamLMStudioResponse(
         config.callerPolicy?.exposeToolErrors,
       );
       toolMetadata.webAttempted ||= roundMetadata.webAttempted;
+      toolMetadata.mutationAttempted ||= roundMetadata.mutationAttempted;
+      toolMetadata.mutationSucceeded ||= roundMetadata.mutationSucceeded;
+      toolMetadata.mutationCancelled ||= roundMetadata.mutationCancelled;
+      toolMetadata.mutationFailed ||= roundMetadata.mutationFailed;
       toolMetadata.readableWebSources.push(
         ...roundMetadata.readableWebSources,
       );
@@ -1143,6 +1225,20 @@ export async function* streamLMStudioResponse(
     toolMetadata.readableWebSources = [
       ...new Set(toolMetadata.readableWebSources),
     ];
+  }
+  if (mutationUnavailable) {
+    yield "I can't perform that action in this conversation.";
+    return;
+  }
+  if (
+    requestedMutationTools.length > 0
+    && toolMetadata.mutationAttempted
+    && !toolMetadata.mutationSucceeded
+  ) {
+    yield toolMetadata.mutationCancelled
+      ? "I didn't make that change because it wasn't confirmed."
+      : "I couldn't complete that action because the tool failed.";
+    return;
   }
   if (toolMetadata.structuredResult) {
     await config.onStructuredResult?.(toolMetadata.structuredResult);
