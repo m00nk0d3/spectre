@@ -54,14 +54,14 @@ for (const artifact of artifacts) {
   run("bsdtar", ["-xf", destination, "-C", extractedDirectory]);
 }
 
-const modelPath = path.join(modelDirectory, "ggml-small.bin");
+const modelPath = path.join(modelDirectory, "ggml-large-v3-turbo.bin");
 if (!existsSync(modelPath)) {
   run("curl", [
     "--fail",
     "--location",
     "--output",
     modelPath,
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
   ]);
 }
 
@@ -73,8 +73,8 @@ if (!existsSync(pythonPath)) {
 run(pythonPath, [
   "-c",
   [
-    "from faster_whisper import WhisperModel",
-    `WhisperModel("small", device="cpu", compute_type="int8", download_root=${JSON.stringify(fasterWhisperDirectory)})`,
+    "from faster_whisper.utils import download_model",
+    `download_model("dropbox-dash/faster-whisper-large-v3-turbo", cache_dir=${JSON.stringify(fasterWhisperDirectory)})`,
   ].join(";"),
 ]);
 

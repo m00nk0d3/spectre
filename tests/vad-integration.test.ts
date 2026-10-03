@@ -174,5 +174,34 @@ describe("VAD integration", () => {
       expect(appSource).toMatch(/vad\.cleanup\(\)/);
       expect(appSource).toMatch(/analysis\.amplitude/);
     });
+
+    it("keeps VAD active during playback and preserves the prior transcript", () => {
+      expect(appSource).not.toMatch(
+        /onPlaybackStart:[\s\S]{0,120}vad\?\.stop/,
+      );
+      expect(appSource).toMatch(
+        /onSpeechStart:[\s\S]{0,120}queue\.reset\(\)/,
+      );
+      expect(appSource).toMatch(
+        /onSpeechStart:[\s\S]{0,180}cancelConversation\(\)/,
+      );
+      const speechStartBlock = appSource.match(
+        /onSpeechStart:\s*async\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\},/,
+      )?.[1] ?? "";
+      expect(speechStartBlock).not.toContain("setTranscript");
+      expect(speechStartBlock).not.toContain("setReply");
+    });
+
+    it("waits for the local voice runtime and handles conversation failures", () => {
+      expect(appSource).toMatch(
+        /pythonStatusRequest\(\)[\s\S]{0,120}vad\?\.start\(\)/,
+      );
+      expect(appSource).toMatch(
+        /onSpeechEnd:[\s\S]{0,260}catch\s*\(conversationError\)/,
+      );
+      expect(mainSource).toMatch(
+        /python-status-request[\s\S]{0,100}serverResult\?\.ready\s*\?\?\s*false/,
+      );
+    });
   });
 });

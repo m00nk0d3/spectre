@@ -14,10 +14,11 @@ const requirementsPath = path.resolve(
   "src/main/python_server/requirements.txt",
 );
 
-function run(command, args) {
+function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: "inherit",
     env: process.env,
+    ...options,
   });
 
   if (result.error) {
@@ -44,5 +45,4 @@ run("uv", [
   "--requirements",
   requirementsPath,
 ]);
-
 console.log(`[SPECTRE] Managed Python runtime ready at ${pythonPath}`);

@@ -61,6 +61,7 @@ jobs:
 
       - name: Validate source
         run: |
+          npm run test:discord-security
           npm test
           npm run type-check
           npm run lint -- --quiet

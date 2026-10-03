@@ -35,14 +35,16 @@ describe("Issue #15: Persona and language constraints", () => {
     expect(content).toMatch(/\[AI-COMMUNICATIONS\].*Context messages initialized/i);
   });
 
-  it("AC-01: System prompt should contain strict US English requirement", () => {
+  it("AC-01: System prompt should require English", () => {
     if (!existsSync(mainPath)) {
       throw new Error("src/main/main.ts not found");
     }
 
     const content = readSystemPrompt();
 
-    expect(content).toMatch(/US ENGLISH ONLY/i);
+    expect(content).toMatch(/ENGLISH ONLY/i);
+    expect(content).toMatch(/natural, concise English/i);
+    expect(content).toMatch(/American conversational tone/i);
   });
 
   it("AC-02: System prompt should contain zero markdown formatting prohibition", () => {
@@ -67,7 +69,7 @@ describe("Issue #15: Persona and language constraints", () => {
     expect(content).toMatch(/plain.*text|speech/i);
   });
 
-  it("AC-03: System prompt should define the butler persona", () => {
+  it("AC-03: System prompt should define the close-friend persona", () => {
     if (!existsSync(mainPath)) {
       throw new Error("src/main/main.ts not found");
     }
@@ -75,10 +77,10 @@ describe("Issue #15: Persona and language constraints", () => {
     const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-03: System prompt must define friendly-but-professional tone
-    expect(content).toMatch(/DISCREET BUTLER/i);
+    expect(content).toMatch(/CLOSE FRIEND PERSONA/i);
   });
 
-  it("AC-03: System prompt should encourage informal humor with professional respect", () => {
+  it("AC-03: System prompt should allow informal humor and language", () => {
     if (!existsSync(mainPath)) {
       throw new Error("src/main/main.ts not found");
     }
@@ -86,7 +88,23 @@ describe("Issue #15: Persona and language constraints", () => {
     const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-03: Balance between friendly informal tone and professional respect
-    expect(content).toMatch(/humor/i);
+    expect(content).toMatch(/noticeable but controlled witty edge/i);
+    expect(content).toMatch(/brief friendly roasts/i);
+    expect(content).toMatch(/Do not invent a mistake or personal detail/i);
+    expect(content).toMatch(/Profanity is allowed but should remain rare/i);
+    expect(content).toMatch(/instead of replying like a therapist/i);
+    expect(content).toMatch(/hard limit of two short sentences/i);
+    expect(content).toMatch(/Be respectful by default/i);
+    expect(content).toContain("Of course. Tell me what you need.");
+    expect(content).toMatch(/"man", "dude", or "bro"/i);
+  });
+
+  it("AC-03: System prompt should keep task execution professional", () => {
+    const content = readSystemPrompt();
+
+    expect(content).toMatch(/PROFESSIONAL EXECUTION/i);
+    expect(content).toMatch(/conversational layer/i);
+    expect(content).toMatch(/Never call the user "sir"/i);
   });
 
   it("AC-03: System prompt should avoid robotic language", () => {
