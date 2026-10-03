@@ -160,24 +160,16 @@ describe("LM Studio tool calling", () => {
     expect(routeDirectToolCalls(prompt)).toEqual([]);
   });
 
-  it("never claims a cancelled Obsidian write succeeded", async () => {
+  it("recovers generic mutation arguments when native tool calls are missing", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(noToolSelectionResponse())
       .mockResolvedValueOnce(Response.json({
         choices: [{
           message: {
-            role: "assistant",
-            content: "",
-            tool_calls: [{
-              id: "write_note",
-              type: "function",
-              function: {
-                name: "append_obsidian_note",
-                arguments: JSON.stringify({
-                  path: "30 Knowledge/Spectre Persona.md",
-                  content: "# Spectre Persona\n\nPlayful and capable.",
-                }),
-              },
-            }],
+            content: JSON.stringify({
+              path: "30 Knowledge/Groceries.md",
+              content: "# Groceries\n\n- Coffee",
+            }),
           },
         }],
       }))
@@ -185,7 +177,7 @@ describe("LM Studio tool calling", () => {
 
     let result = "";
     for await (const chunk of streamLMStudioResponse(
-      "Create a new MD with the Spectre Persona specifications on the vault, please.",
+      "Create a new MD in my vault with a grocery list, please.",
       {
         model: "test-model",
         callerPolicy: {
@@ -212,6 +204,52 @@ describe("LM Studio tool calling", () => {
     expect(selection.tools.map((tool) => tool.function.name)).toEqual([
       "append_obsidian_note",
     ]);
+    const recovery = JSON.parse(
+      String(fetchMock.mock.calls[1][1]?.body),
+    ) as {
+      max_tokens: number;
+      response_format: {
+        json_schema: {
+          schema: {
+            required?: string[];
+          };
+        };
+      };
+    };
+    expect(recovery.max_tokens).toBe(2_048);
+    expect(recovery.response_format.json_schema.schema.required).toEqual([
+      "content",
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports a missing required mutation tool without an IPC error", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(noToolSelectionResponse())
+      .mockResolvedValueOnce(Response.json({
+        choices: [{
+          message: {
+            content: "I still refuse to return JSON.",
+          },
+        }],
+      }));
+
+    let result = "";
+    for await (const chunk of streamLMStudioResponse(
+      "Create a new MD in my vault with a grocery list, please.",
+      {
+        model: "test-model",
+        callerPolicy: {
+          allowedToolNames: ["append_obsidian_note"],
+        },
+      },
+    )) {
+      result += chunk;
+    }
+
+    expect(result).toBe(
+      "I couldn't complete that action because no mutation tool completed successfully.",
+    );
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

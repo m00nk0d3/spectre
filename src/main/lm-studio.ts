@@ -94,6 +94,7 @@ const MAX_TOOL_CALLS_PER_ROUND = 4;
 const MAX_TOOL_ROUNDS = 12;
 const MAX_TOTAL_TOOL_CALLS = 32;
 const MAX_TOOL_SELECTION_TOKENS = 768;
+const MAX_MUTATION_RECOVERY_TOKENS = 2_048;
 const MAX_RESPONSE_TOKENS = 256;
 
 interface ToolExecutionMetadata {
@@ -903,6 +904,80 @@ async function selectOptionalTools(
   );
 }
 
+async function recoverRequiredToolCall(
+  messages: ChatMessage[],
+  endpoint: string,
+  model: string,
+  apiKey: string,
+  toolName: string,
+  signal?: AbortSignal,
+): Promise<ToolCall> {
+  const tool = SPECTRE_TOOLS.find(
+    (candidate) => candidate.function.name === toolName,
+  );
+  if (!tool) {
+    throw new Error(`Unknown required Spectre tool: ${toolName}`);
+  }
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      stream: false,
+      temperature: 0,
+      max_tokens: MAX_MUTATION_RECOVERY_TOKENS,
+      reasoning_effort: "none",
+      chat_template_kwargs: {
+        enable_thinking: false,
+      },
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "spectre_required_tool_arguments",
+          strict: true,
+          schema: tool.function.parameters,
+        },
+      },
+      messages: [
+        ...messages,
+        {
+          role: "user",
+          content: [
+            `The required ${toolName} tool call was not emitted.`,
+            `Produce only the JSON arguments for ${toolName}.`,
+            `Tool purpose: ${tool.function.description}`,
+            "Use the original request and conversation context.",
+            "Do not claim completion and do not include Markdown or commentary.",
+          ].join(" "),
+        },
+      ],
+    }),
+    signal,
+  });
+  if (!response.ok) await readError(response);
+  const body = await response.json() as ToolSelectionResponse;
+  const content = body.choices?.[0]?.message?.content?.trim() ?? "";
+  const json = content.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) {
+    throw new Error("LM Studio did not return required tool arguments");
+  }
+  const args = JSON.parse(json) as unknown;
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    throw new Error("LM Studio returned invalid required tool arguments");
+  }
+  return {
+    id: `spectre-recovered-${toolName}`,
+    type: "function",
+    function: {
+      name: toolName,
+      arguments: JSON.stringify(args),
+    },
+  };
+}
+
 async function selectTools(
   messages: ChatMessage[],
   endpoint: string,
@@ -1101,11 +1176,16 @@ export async function* streamLMStudioResponse(
       : prompt,
   });
 
+  const directToolCalls = routeDirectToolCalls(
+    prompt,
+    memoryContext,
+  ).filter(
+    (toolCall) => allowedToolNames.includes(toolCall.function.name),
+  );
   let toolCalls = requestedMutationTools.length > 0
-    ? []
-    : routeDirectToolCalls(prompt, memoryContext).filter(
-        (toolCall) => allowedToolNames.includes(toolCall.function.name),
-      );
+    ? directToolCalls.filter((toolCall) =>
+        requestedMutationTools.includes(toolCall.function.name))
+    : directToolCalls;
   const seenToolCalls = new Set<string>();
   const toolMetadata: ToolExecutionMetadata = {
     webAttempted: false,
@@ -1153,24 +1233,55 @@ export async function* streamLMStudioResponse(
           message: "Planning how to complete this request",
         });
       }
-      toolCalls = round === 0 && requiredMutationTools.length > 0
-        ? await selectTools(
-            messages,
-            endpoint,
-            model,
-            apiKey,
-            requiredMutationTools,
-            "required",
-            config.signal,
-          )
-        : await selectOptionalTools(
-            messages,
-            endpoint,
-            model,
-            apiKey,
-            allowedToolNames,
-            config.signal,
-          );
+      try {
+        toolCalls = round === 0 && requiredMutationTools.length > 0
+          ? await selectTools(
+              messages,
+              endpoint,
+              model,
+              apiKey,
+              requiredMutationTools,
+              "required",
+              config.signal,
+            )
+          : await selectOptionalTools(
+              messages,
+              endpoint,
+              model,
+              apiKey,
+              allowedToolNames,
+              config.signal,
+            );
+      } catch (error) {
+        if (
+          round === 0
+          && requiredMutationTools.length > 0
+          && error instanceof Error
+          && error.message === "LM Studio did not return the required tool call"
+        ) {
+          try {
+            toolCalls = [
+              await recoverRequiredToolCall(
+                messages,
+                endpoint,
+                model,
+                apiKey,
+                requiredMutationTools[0],
+                config.signal,
+              ),
+            ];
+          } catch (recoveryError) {
+            void recoveryError;
+            console.error(
+              "[SPECTRE-TOOL] Required mutation arguments could not be recovered",
+            );
+            toolMetadata.mutationFailed = true;
+            break;
+          }
+        } else {
+          throw error;
+        }
+      }
       if (toolCalls.length === 0) break;
       if (toolMetadata.structuredResult) {
         toolMetadata.structuredResult = undefined;
@@ -1232,12 +1343,12 @@ export async function* streamLMStudioResponse(
   }
   if (
     requestedMutationTools.length > 0
-    && toolMetadata.mutationAttempted
     && !toolMetadata.mutationSucceeded
+    && (toolMetadata.mutationAttempted || toolMetadata.mutationFailed)
   ) {
     yield toolMetadata.mutationCancelled
       ? "I didn't make that change because it wasn't confirmed."
-      : "I couldn't complete that action because the tool failed.";
+      : "I couldn't complete that action because no mutation tool completed successfully.";
     return;
   }
   if (toolMetadata.structuredResult) {
