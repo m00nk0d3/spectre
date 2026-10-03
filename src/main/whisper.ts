@@ -12,7 +12,7 @@ function getManagedWhisperPaths() {
 
   return {
     executable: path.join(runtime, "bin", "whisper-cli"),
-    model: path.join(root, "models", "ggml-small.bin"),
+    model: path.join(root, "models", "ggml-large-v3-turbo.bin"),
     libraryPath: path.join(runtime, "lib"),
     genericBackendPath: path.join(
       runtime,
@@ -88,6 +88,36 @@ export async function transcribeWithFasterWhisper(
   return payload.text.trim();
 }
 
+export async function transcribeAudioBuffer(
+  wav: Uint8Array,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (wav.byteLength === 0) {
+    throw new Error("Audio buffer is empty");
+  }
+  const response = await fetch(`${getTTSServerUrl()}/transcribe`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "audio/wav",
+    },
+    body: Buffer.from(wav),
+    signal,
+  });
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(
+      `Faster Whisper returned ${response.status}: ${
+        details || response.statusText
+      }`,
+    );
+  }
+  const payload = await response.json() as { text?: unknown };
+  if (typeof payload.text !== "string" || !payload.text.trim()) {
+    throw new Error("No transcription output from Faster Whisper");
+  }
+  return payload.text.trim();
+}
+
 export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: string): Promise<string> {
   if (!wavPath || !fs.existsSync(wavPath)) {
     throw new Error(`WAV file does not exist at path: ${wavPath}`);
@@ -115,7 +145,7 @@ export async function transcribeWithWhisperCpp(wavPath: string, modelPath?: stri
   const sanitizedWavPath = sanitizeShellArgument(wavPath);
   const backendPath = getWhisperBackend(managed);
 
-  const cmd = `"${whisperPath}" -f "${sanitizedWavPath}" -m "${sanitizedModelPath}" -l en --prompt "Accurate US English transcription. Assistant name: Spectre." --suppress-nst --no-gpu --no-timestamps`;
+  const cmd = `"${whisperPath}" -f "${sanitizedWavPath}" -m "${sanitizedModelPath}" -l en --prompt "Accurate US English transcription. The assistant's name is Spectre." --suppress-nst --no-gpu --no-timestamps`;
 
   console.log(`[WHISPER] Backend: ${path.basename(backendPath)}`);
   console.log("[WHISPER] Executing:", cmd);

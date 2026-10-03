@@ -152,7 +152,7 @@ cat > "$desktop_path" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Spectre
-Comment=Local US English voice assistant
+Comment=Local English voice assistant
 Exec="$launcher_path"
 Terminal=false
 Categories=AudioVideo;Utility;
@@ -188,16 +188,25 @@ if "$install_runtime"; then
     --python "$python_path" \
     --requirements "$temporary_directory/$requirements_asset"
 
+  "$python_path" - <<'PY'
+from kokoro import KPipeline
+
+pipeline = KPipeline(lang_code="a")
+next(iter(pipeline(
+    "Everything is ready.",
+    voice="am_michael",
+    speed=1.1,
+)))
+PY
+
   whisper_cache="${SPECTRE_WHISPER_RUNTIME:-$data_home/spectre/whisper}/faster-whisper"
   "$python_path" - "$whisper_cache" <<'PY'
 import sys
-from faster_whisper import WhisperModel
+from faster_whisper.utils import download_model
 
-WhisperModel(
-    "small",
-    device="cpu",
-    compute_type="int8",
-    download_root=sys.argv[1],
+download_model(
+    "dropbox-dash/faster-whisper-large-v3-turbo",
+    cache_dir=sys.argv[1],
 )
 PY
 fi

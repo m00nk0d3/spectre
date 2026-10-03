@@ -95,6 +95,19 @@ describe("Spawn Python Server Module", () => {
     expect(content).toContain("getManagedPythonPath");
   });
 
+  it("should expose managed CUDA libraries to CTranslate2", async () => {
+    const scriptPath = path.join(
+      PROJECT_ROOT,
+      "scripts/spawn-python-server.ts",
+    );
+    const fs = await import("fs");
+    const content = fs.readFileSync(scriptPath, "utf8");
+
+    expect(content).toContain("getManagedCudaLibraryPath");
+    expect(content).toContain("nvidia\", \"cublas\", \"lib");
+    expect(content).toContain("LD_LIBRARY_PATH");
+  });
+
   it("should spawn with uvicorn command", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
     const fs = await import("fs");
@@ -113,15 +126,15 @@ describe("Spawn Python Server Module", () => {
     expect(content).toContain("1235");
   });
 
-  it("should handle GPU marker in stdout", async () => {
+  it("should handle model-ready output", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
     const fs = await import("fs");
     const content = fs.readFileSync(scriptPath, "utf8");
 
-    expect(content).toMatch(/gpu|model_loaded/i);
+    expect(content).toMatch(/model loaded successfully/i);
   });
 
-  it("should set ready flag when GPU marker detected", async () => {
+  it("should set ready flag after the health check succeeds", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
     const fs = await import("fs");
     const content = fs.readFileSync(scriptPath, "utf8");
@@ -172,12 +185,16 @@ describe("Spawn Python Server Module", () => {
 });
 
 describe("Main Process Python Spawning Environment", () => {
-  it("should have KOKORO_MODEL_PATH environment variable support", async () => {
-    const mainPath = path.join(PROJECT_ROOT, "src/main/main.ts");
+  it("should use the managed Kokoro runtime without a legacy model path", async () => {
+    const scriptPath = path.join(
+      PROJECT_ROOT,
+      "scripts/spawn-python-server.ts",
+    );
     const fs = await import("fs");
-    const content = fs.readFileSync(mainPath, "utf8");
+    const content = fs.readFileSync(scriptPath, "utf8");
 
-    expect(content).toMatch(/KOKORO_MODEL_PATH/i);
+    expect(content).not.toMatch(/KOKORO_MODEL_PATH/i);
+    expect(content).toContain("python_server.main:app");
   });
 });
 
@@ -190,12 +207,12 @@ describe("Spawn Python Server Stdio Configuration", () => {
     expect(content).toMatch(/stdio:\s*\[\s*"/i);
   });
 
-  it("should have 30 second timeout mechanism", async () => {
+  it("should have a bounded startup timeout mechanism", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
     const fs = await import("fs");
     const content = fs.readFileSync(scriptPath, "utf8");
 
-    expect(content).toMatch(/TIMEOUT_MS|timeout/i);
+    expect(content).toContain("TIMEOUT_MS = 120000");
   });
 
   it("should reject promise on timeout", async () => {

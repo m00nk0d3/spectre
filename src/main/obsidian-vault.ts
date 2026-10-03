@@ -306,6 +306,24 @@ function assertSafeContent(content: string): string {
   return trimmed;
 }
 
+export function validateObsidianAppend(
+  relativePath: string | undefined,
+  content: string,
+): { path: string; content: string } {
+  const relative = assertRelativeMarkdownPath(
+    relativePath?.trim() || DEFAULT_CAPTURE_PATH,
+  );
+  if (!WRITABLE_ROOTS.has(relative.split(path.sep)[0])) {
+    throw new Error(
+      `Vault writes are limited to: ${[...WRITABLE_ROOTS].join(", ")}`,
+    );
+  }
+  return {
+    path: relative,
+    content: assertSafeContent(content),
+  };
+}
+
 export async function appendObsidianNote(
   relativePath: string | undefined,
   content: string,
@@ -317,15 +335,9 @@ export async function appendObsidianNote(
   verification: string;
 }> {
   const vault = await realpath(vaultPath ?? await discoverObsidianVault());
-  const relative = assertRelativeMarkdownPath(
-    relativePath?.trim() || DEFAULT_CAPTURE_PATH,
-  );
-  if (!WRITABLE_ROOTS.has(relative.split(path.sep)[0])) {
-    throw new Error(
-      `Vault writes are limited to: ${[...WRITABLE_ROOTS].join(", ")}`,
-    );
-  }
-  const safeContent = assertSafeContent(content);
+  const validated = validateObsidianAppend(relativePath, content);
+  const relative = validated.path;
+  const safeContent = validated.content;
   const target = path.resolve(vault, relative);
   assertContained(vault, target);
 

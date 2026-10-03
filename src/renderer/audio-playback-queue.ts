@@ -74,6 +74,16 @@ export class AudioPlaybackQueue {
     return this.decodeChain;
   }
 
+  enqueueImmediate(audio: ArrayBuffer): Promise<void> {
+    const generation = this.generation;
+    this.pendingSchedules += 1;
+    this.cancelIdle();
+    this.decodeChain = this.decodeChain.then(() =>
+      this.schedule(audio, generation),
+    );
+    return this.decodeChain;
+  }
+
   private async schedule(
     audio: ArrayBuffer,
     generation: number,

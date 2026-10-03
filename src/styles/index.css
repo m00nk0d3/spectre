@@ -19,6 +19,7 @@ canvas {
 }
 
 .spectre-shell {
+  position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 14px;
@@ -46,6 +47,71 @@ canvas {
   left: 50%;
   bottom: 8px;
   transform: translateX(-50%);
+}
+
+.agent-task-list {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  width: min(310px, 42vw);
+  max-height: calc(100% - 52px);
+  overflow-y: auto;
+  border: 1px solid rgba(240, 200, 121, 0.22);
+  border-radius: 13px;
+  padding: 12px 13px;
+  background: rgba(4, 8, 13, 0.78);
+  box-shadow: 0 0 28px rgba(240, 200, 121, 0.07);
+  backdrop-filter: blur(14px);
+}
+
+.agent-task-list header {
+  margin-bottom: 9px;
+  color: rgba(240, 200, 121, 0.82);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.agent-task-list ol {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.agent-task-list li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.agent-task-list li > span {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: rgba(169, 197, 213, 0.34);
+}
+
+.agent-task-list li p {
+  color: rgba(220, 233, 243, 0.76);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.agent-task-list .task-working > span {
+  background: #f0c879;
+  box-shadow: 0 0 8px rgba(240, 200, 121, 0.8);
+}
+
+.agent-task-list .task-done > span {
+  background: #75d7a0;
+}
+
+.agent-task-list .task-failed > span {
+  background: #ff8e9b;
 }
 
 .transcript-view {
@@ -112,6 +178,14 @@ canvas {
   color: #b4a7ff;
 }
 
+.transcript-progress > span {
+  color: #f0c879;
+}
+
+.transcript-progress p {
+  color: rgba(240, 200, 121, 0.86);
+}
+
 .transcript-placeholder {
   padding: 18px 0 8px;
   color: rgba(169, 197, 213, 0.46);
@@ -151,4 +225,479 @@ canvas {
 .state-error,
 .error-message {
   color: #ff8e9b !important;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+button {
+  border: 1px solid rgba(142, 230, 255, 0.35);
+  border-radius: 9px;
+  padding: 8px 11px;
+  color: #dce9f3;
+  background: rgba(77, 154, 196, 0.18);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: rgba(142, 230, 255, 0.65);
+  background: rgba(77, 154, 196, 0.28);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.workflow-toggle {
+  position: absolute;
+  z-index: 5;
+  top: 18px;
+  right: 20px;
+  color: rgba(220, 233, 243, 0.78);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
+}
+
+.github-toggle {
+  position: absolute;
+  z-index: 5;
+  top: 18px;
+  right: 118px;
+  color: rgba(220, 233, 243, 0.78);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
+}
+
+.memory-toggle {
+  position: absolute;
+  z-index: 5;
+  top: 18px;
+  right: 195px;
+  color: rgba(220, 233, 243, 0.78);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
+}
+
+.workflow-panel {
+  position: absolute;
+  z-index: 10;
+  inset: 12px 12px 12px auto;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, calc(100% - 24px));
+  overflow: hidden;
+  border: 1px solid rgba(154, 204, 235, 0.25);
+  border-radius: 18px;
+  background: rgba(3, 7, 12, 0.96);
+  box-shadow:
+    -18px 0 60px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px);
+}
+
+.workflow-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(154, 204, 235, 0.14);
+}
+
+.workflow-panel-header span,
+.workflow-section > label {
+  color: rgba(169, 197, 213, 0.58);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.workflow-panel-header h2 {
+  margin-top: 3px;
+  color: #dce9f3;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.icon-button,
+.secondary-button {
+  color: rgba(220, 233, 243, 0.7);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.workflow-section {
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(154, 204, 235, 0.09);
+}
+
+.workflow-section h3 {
+  margin-bottom: 10px;
+  color: rgba(169, 197, 213, 0.78);
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.workflow-section select,
+.workflow-section input {
+  width: 100%;
+  border: 1px solid rgba(154, 204, 235, 0.18);
+  border-radius: 9px;
+  padding: 9px 10px;
+  outline: none;
+  color: #dce9f3;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.workflow-section select {
+  margin-top: 7px;
+}
+
+.issue-plan-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.workflow-runs {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.workflow-list {
+  display: grid;
+  gap: 9px;
+}
+
+.workflow-card {
+  padding: 11px;
+  border: 1px solid rgba(154, 204, 235, 0.13);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.workflow-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workflow-card-heading strong {
+  color: rgba(220, 233, 243, 0.94);
+  font-size: 11px;
+}
+
+.workflow-card-heading span,
+.workflow-card p,
+.workflow-card li,
+.workflow-empty {
+  color: rgba(169, 197, 213, 0.62);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.workflow-card > p {
+  margin-top: 6px;
+}
+
+.workflow-card ul {
+  margin: 8px 0 0 16px;
+}
+
+.workflow-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.workflow-actions button {
+  padding: 6px 9px;
+  font-size: 9px;
+}
+
+.danger-button {
+  border-color: rgba(255, 142, 155, 0.35);
+  color: #ffadb6;
+  background: rgba(180, 48, 64, 0.12);
+}
+
+.workflow-status {
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workflow-status.status-running,
+.workflow-status.status-queued {
+  color: #8ee6ff;
+}
+
+.workflow-status.status-blocked {
+  color: #ffd68e;
+}
+
+.workflow-status.status-succeeded {
+  color: #9df2ba;
+}
+
+.workflow-status.status-failed,
+.workflow-error,
+.workflow-panel-error {
+  color: #ff8e9b !important;
+}
+
+.workflow-progress {
+  height: 3px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(143, 204, 233, 0.12);
+}
+
+.workflow-progress span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7ebce0, #b4a7ff);
+  box-shadow: 0 0 8px rgba(142, 230, 255, 0.5);
+}
+
+.workflow-agent {
+  color: rgba(180, 167, 255, 0.72) !important;
+}
+
+.workflow-panel-error {
+  padding: 10px 18px 14px;
+  font-size: 10px;
+}
+
+.presentation-backdrop {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 3, 7, 0.76);
+  backdrop-filter: blur(18px);
+}
+
+.presentation-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(78vh, 720px);
+  overflow: hidden;
+  border: 1px solid rgba(154, 204, 235, 0.28);
+  border-radius: 18px;
+  background: rgba(3, 7, 12, 0.98);
+  box-shadow:
+    0 24px 90px rgba(0, 0, 0, 0.58),
+    0 0 44px rgba(76, 164, 219, 0.1);
+}
+
+.presentation-panel header,
+.presentation-panel footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.presentation-panel header {
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(154, 204, 235, 0.14);
+}
+
+.presentation-panel header span {
+  color: rgba(169, 197, 213, 0.58);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.presentation-panel h2 {
+  margin-top: 4px;
+  color: #dce9f3;
+  font-size: 19px;
+  font-weight: 650;
+}
+
+.presentation-panel pre {
+  min-height: 180px;
+  padding: 20px;
+  overflow: auto;
+  color: rgba(220, 233, 243, 0.9);
+  background: rgba(255, 255, 255, 0.018);
+  font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.presentation-content {
+  min-height: 180px;
+  padding: 20px;
+  overflow: auto;
+  color: rgba(220, 233, 243, 0.9);
+  background: rgba(255, 255, 255, 0.018);
+  user-select: text;
+}
+
+.presentation-content > p {
+  margin-bottom: 14px;
+  color: rgba(169, 197, 213, 0.72);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.presentation-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.presentation-list li {
+  padding: 10px 12px;
+  border: 1px solid rgba(154, 204, 235, 0.12);
+  border-radius: 10px;
+  color: rgba(220, 233, 243, 0.9);
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.presentation-panel footer {
+  justify-content: flex-end;
+  border-top: 1px solid rgba(154, 204, 235, 0.14);
+}
+
+.github-monitor-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.github-monitor-summary > div {
+  display: grid;
+  gap: 4px;
+}
+
+.github-monitor-summary span {
+  color: rgba(169, 197, 213, 0.52);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.github-monitor-summary strong {
+  overflow: hidden;
+  color: rgba(220, 233, 243, 0.88);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.github-events {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.github-last-checked {
+  margin: -4px 0 10px;
+  color: rgba(169, 197, 213, 0.48);
+  font-size: 9px;
+}
+
+.github-event-kind {
+  color: #8ee6ff !important;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.github-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.github-event-meta span {
+  color: rgba(169, 197, 213, 0.46);
+  font-size: 8px;
+}
+
+.memory-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.memory-summary > div {
+  display: grid;
+  gap: 4px;
+}
+
+.memory-summary span {
+  color: rgba(169, 197, 213, 0.52);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.memory-summary strong {
+  color: rgba(220, 233, 243, 0.88);
+  font-size: 10px;
+}
+
+.memory-history {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.memory-turn p span {
+  color: #8fcce9;
+  font-weight: 700;
+}
+
+.memory-turn p + p {
+  margin-top: 5px;
+}
+
+.memory-danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.memory-danger p {
+  color: rgba(169, 197, 213, 0.52);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.memory-danger button {
+  flex: 0 0 auto;
 }

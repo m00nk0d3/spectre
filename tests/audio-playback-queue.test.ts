@@ -7,11 +7,14 @@ import {
 class FakeSource {
   buffer: AudioBuffer | null = null;
   onended: (() => void) | null = null;
+  stopped = false;
 
   connect(): void {}
   disconnect(): void {}
   start(): void {}
-  stop(): void {}
+  stop(): void {
+    this.stopped = true;
+  }
 }
 
 class FakeAudioContext {
@@ -95,6 +98,18 @@ describe("AudioPlaybackQueue lifecycle", () => {
     expect(context.sources).toHaveLength(1);
   });
 
+  it("plays presentation hints without consuming streamed sequence numbers", async () => {
+    const context = new FakeAudioContext();
+    const queue = new AudioPlaybackQueue(
+      context as unknown as AudioContext,
+    );
+
+    await queue.enqueueImmediate(new ArrayBuffer(8));
+    await queue.enqueue(0, new ArrayBuffer(8));
+
+    expect(context.sources).toHaveLength(2);
+  });
+
   it("pauses capture before playback and resumes after the acoustic tail", async () => {
     vi.useFakeTimers();
     const context = new FakeAudioContext();
@@ -156,5 +171,18 @@ describe("AudioPlaybackQueue lifecycle", () => {
     await vi.advanceTimersByTimeAsync(350);
 
     expect(onPlaybackIdle).toHaveBeenCalledOnce();
+  });
+
+  it("stops active speech immediately when reset for barge-in", async () => {
+    const context = new FakeAudioContext();
+    const queue = new AudioPlaybackQueue(
+      context as unknown as AudioContext,
+    );
+
+    await queue.enqueue(0, new ArrayBuffer(8));
+    queue.reset();
+
+    expect(context.sources[0].stopped).toBe(true);
+    expect(queue.analyze().isPlaying).toBe(false);
   });
 });

@@ -8,15 +8,14 @@ const MAIN_PATH = path.join(PROJECT_ROOT, "src/main/main.ts");
 describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration", () => {
   // AC-01: Endpoint POST /tts exists and returns WAV binary
 
-  it("should spawn Python server with KOKORO_MODEL_PATH env variable", async () => {
+  it("should spawn the managed Python voice server", async () => {
     if (!existsSync(MAIN_PATH)) {
       throw new Error("src/main/main.ts not found");
     }
 
     const content = readFileSync(MAIN_PATH, "utf8");
 
-    // Check that KOKORO_MODEL_PATH is passed to spawnPythonServer
-    expect(content).toMatch(/KOKORO_MODEL_PATH/i);
+    expect(content).toMatch(/spawnPythonServer\(\)/i);
   });
 
   it("should handle serverResult check before calling TTS endpoint", async () => {
@@ -98,7 +97,7 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
 
   // AC-02: Model maintained in hot memory - validate startup behavior
 
-  it("should log GPU model loaded marker on server startup", async () => {
+  it("should log the model-ready marker on server startup", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
 
     if (!existsSync(scriptPath)) {
@@ -107,11 +106,10 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
 
     const content = readFileSync(scriptPath, "utf8");
 
-    // Spawn script should log GPU marker when model loads
-    expect(content).toMatch(/gpu|kokoro/i);
+    expect(content).toMatch(/model loaded successfully/i);
   });
 
-  it("should resolve with ready=true when GPU marker detected", async () => {
+  it("should resolve with ready=true after model readiness", async () => {
     const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
 
     if (!existsSync(scriptPath)) {
@@ -359,7 +357,7 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
   });
 
   describe("Edge Cases and Error Handling", () => {
-    it("should throw clear error when KOKORO_MODEL_PATH is empty or invalid", async () => {
+    it("should use a bounded startup timeout for model loading", async () => {
       const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
 
       if (!existsSync(scriptPath)) {
@@ -368,8 +366,8 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
 
       const content = readFileSync(scriptPath, "utf8");
 
-      // Spawn should handle model path validation
-      expect(content).toMatch(/modelPath/i);
+      expect(content).toContain("TIMEOUT_MS");
+      expect(content).toContain("120000");
     });
 
     it("should handle GPU unavailable (CPU fallback)", async () => {
@@ -429,7 +427,7 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
       expect(content).toMatch(/OPENAI_TIMEOUT/i);
     });
 
-    it("should pass KOKORO_MODEL_PATH to Python subprocess", async () => {
+    it("should not depend on a legacy Kokoro model path", async () => {
       const scriptPath = path.join(PROJECT_ROOT, "scripts/spawn-python-server.ts");
 
       if (!existsSync(scriptPath)) {
@@ -438,8 +436,8 @@ describe("Issue #16: FastAPI TTS Microservice - Endpoint POST /tts Integration",
 
       const content = readFileSync(scriptPath, "utf8");
 
-      // Check env variable propagation
-      expect(content).toMatch(/KOKORO_MODEL_PATH/i);
+      expect(content).not.toMatch(/KOKORO_MODEL_PATH/i);
+      expect(content).toMatch(/PYTHONUNBUFFERED/i);
     });
 
     it("should support CUDA_VISIBLE_DEVICES for multi-GPU setups", async () => {

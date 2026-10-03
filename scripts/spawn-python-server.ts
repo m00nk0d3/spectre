@@ -13,6 +13,24 @@ export function getManagedPythonPath(): string {
   return path.join(runtimeRoot, "bin", "python");
 }
 
+export function getManagedCudaLibraryPath(): string {
+  const dataHome = process.env.XDG_DATA_HOME
+    || path.join(os.homedir(), ".local", "share");
+  const runtimeRoot = process.env.SPECTRE_PYTHON_RUNTIME
+    || path.join(dataHome, "spectre", "python");
+  const sitePackages = path.join(
+    runtimeRoot,
+    "lib",
+    "python3.12",
+    "site-packages",
+  );
+
+  return [
+    path.join(sitePackages, "nvidia", "cublas", "lib"),
+    path.join(sitePackages, "nvidia", "cudnn", "lib"),
+  ].join(path.delimiter);
+}
+
 export function detectPython(): string {
   if (process.env.PYTHON_CMD) return process.env.PYTHON_CMD;
   const managedPython = getManagedPythonPath();
@@ -26,7 +44,7 @@ export function detectPython(): string {
 
 export type SpawnResult = { pid: number; ready: boolean };
 
-const TIMEOUT_MS = 30000; // 30s timeout for GPU model loading
+const TIMEOUT_MS = 120000;
 const DEFAULT_TTS_SERVER_PORT = 1235;
 
 export function getTTSServerPort(): number {
@@ -60,9 +78,7 @@ export function resolvePythonServerCwd(): string {
   return serverPath;
 }
 
-export async function spawnPythonServer(
-  modelPath: string = "",
-): Promise<SpawnResult> {
+export async function spawnPythonServer(): Promise<SpawnResult> {
   const cmd = detectPython();
   const serverCwd = resolvePythonServerCwd();
   const serverPort = getTTSServerPort();
@@ -81,8 +97,11 @@ export async function spawnPythonServer(
       cwd: serverCwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env,
-        KOKORO_MODEL_PATH: modelPath,
         PYTHONUNBUFFERED: "1",
+        LD_LIBRARY_PATH: [
+          getManagedCudaLibraryPath(),
+          process.env.LD_LIBRARY_PATH,
+        ].filter(Boolean).join(path.delimiter),
       },
     });
 
@@ -114,8 +133,8 @@ export async function spawnPythonServer(
       resolved = true;
       clearInterval(healthInterval);
       pythonProcess.kill("SIGTERM");
-      console.error("[PYTHON-SERVER] Timeout after 30s without model-ready marker");
-      reject(new Error("Python server failed to load the model within 30s"));
+      console.error("[PYTHON-SERVER] Timeout after 120s without model readiness");
+      reject(new Error("Python server failed to load the model within 120s"));
     }, TIMEOUT_MS);
 
     let stdoutBuffer = "";
