@@ -30,6 +30,7 @@ import { ConversationMemory } from "./conversation-memory";
 import {
   DiscordTransport,
   loadDiscordConfig,
+  loadDiscordEnvironmentFile,
 } from "./discord-transport";
 import { DiscordNotificationMonitor } from "./discord-notification-monitor";
 import { TextPresenter } from "./text-presenter";
@@ -515,6 +516,9 @@ app.whenReady().then(async () => {
   });
   void githubMonitor.start();
   try {
+    await loadDiscordEnvironmentFile(
+      path.join(app.getPath("userData"), "discord.env"),
+    );
     const discordConfig = loadDiscordConfig();
     if (discordConfig.enabled) {
       discordTransport = new DiscordTransport({

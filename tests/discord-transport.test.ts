@@ -1,6 +1,7 @@
 import type { ButtonBuilder, ButtonInteraction } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyDiscordEnvironment,
   DiscordConfirmationManager,
   discordMemoryScopeKey,
   discordToolNamesForCaller,
@@ -90,6 +91,20 @@ function buttonCustomId(button: ButtonBuilder): string {
 }
 
 describe("Discord configuration", () => {
+  it("loads discord.env values without overriding the process environment", () => {
+    const env: NodeJS.ProcessEnv = {
+      SPECTRE_DISCORD_TOKEN: "process-token",
+    };
+    applyDiscordEnvironment([
+      "SPECTRE_DISCORD_ENABLED=true",
+      'SPECTRE_DISCORD_TOKEN="file-token"',
+      "SPECTRE_DISCORD_OWNER_USER_ID=100",
+    ].join("\n"), env);
+
+    expect(env.SPECTRE_DISCORD_ENABLED).toBe("true");
+    expect(env.SPECTRE_DISCORD_TOKEN).toBe("process-token");
+    expect(env.SPECTRE_DISCORD_OWNER_USER_ID).toBe("100");
+  });
   it("is disabled unless explicitly enabled", () => {
     expect(loadDiscordConfig({})).toEqual({ enabled: false });
   });

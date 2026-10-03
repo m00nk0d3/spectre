@@ -6,6 +6,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { parseEnv } from "node:util";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -190,6 +191,34 @@ function parseVoiceTextChannelMap(
     result.set(match[1], match[2]);
   }
   return result;
+}
+
+export function applyDiscordEnvironment(
+  source: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  for (const [key, value] of Object.entries(parseEnv(source))) {
+    if (env[key] === undefined) {
+      env[key] = value;
+    }
+  }
+}
+
+export async function loadDiscordEnvironmentFile(
+  filePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<boolean> {
+  let source: string;
+  try {
+    source = await readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+  applyDiscordEnvironment(source, env);
+  return true;
 }
 
 export function loadDiscordConfig(
