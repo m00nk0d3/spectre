@@ -220,7 +220,8 @@ before `gh repo clone` runs.
 
 Spectre can run an official Discord application bot alongside the desktop
 assistant. It is disabled by default and never supports user tokens or
-self-bots. Owner DMs are accepted. In guilds, Spectre responds only
+self-bots. DMs are accepted, with non-owners restricted to chat only. In
+guilds, Spectre responds only
 when explicitly mentioned in an allowlisted text channel; an empty allowlist
 fails closed.
 

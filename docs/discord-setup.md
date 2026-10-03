@@ -1,7 +1,7 @@
 # Spectre Discord Setup
 
 This guide configures Spectre as an official Discord application bot for
-allowlisted text channels, owner DMs, and optional voice channels.
+allowlisted text channels, direct messages, and optional voice channels.
 
 Spectre never uses a user account token or self-bot. Do not grant the bot
 Administrator permission.
@@ -9,7 +9,8 @@ Administrator permission.
 ## What the integration supports
 
 - Explicit `@Spectre` mentions in configured guild text channels.
-- Private conversations with the configured owner through direct messages.
+- Private chat-only conversations with any Discord user through direct
+  messages; the configured owner retains access to tools.
 - Owner-only `/spectre join`, `/spectre leave`, and `/spectre status` voice
   commands.
 - A spoken `Spectre` wake word in an allowlisted voice channel.
@@ -336,8 +337,10 @@ mentions to avoid mention loops.
 
 ### Direct messages
 
-Only the configured owner can converse with Spectre in DMs. Other-user DMs are
-ignored.
+Any Discord user who can open a DM with the bot can have a private
+conversation with Spectre. Non-owner users receive conversational chat only;
+they cannot access tools, private memory, files, GitHub, Sandcastle, Obsidian,
+web research, system state, or desktop history.
 
 Attachments, embeds, replied messages, and URLs are not automatically expanded
 or fetched for non-owner callers. Add a concise text request. An owner can

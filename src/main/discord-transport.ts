@@ -355,7 +355,7 @@ export function routeDiscordMessage(
   }
   const owner = input.authorId === config.ownerUserId;
   if (input.isDirectMessage) {
-    return owner ? { accepted: true, owner: true } : { accepted: false };
+    return { accepted: true, owner };
   }
   if (
     !input.mentionedBot

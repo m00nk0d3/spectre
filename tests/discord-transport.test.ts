@@ -121,7 +121,7 @@ describe("Discord configuration", () => {
 });
 
 describe("Discord routing and authorization", () => {
-  it("accepts only owner DMs", () => {
+  it("accepts DMs while preserving owner authorization", () => {
     expect(routeDiscordMessage(config(), {
       authorId: "100",
       isBot: false,
@@ -135,7 +135,7 @@ describe("Discord routing and authorization", () => {
       isDirectMessage: true,
       channelId: "dm-other",
       mentionedBot: false,
-    })).toEqual({ accepted: false });
+    })).toEqual({ accepted: true, owner: false });
   });
 
   it("requires both an explicit mention and an allowlisted guild channel", () => {
