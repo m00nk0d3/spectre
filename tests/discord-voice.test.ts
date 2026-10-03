@@ -4,6 +4,7 @@ import {
   cleanupVoiceResources,
   evaluateVoiceJoin,
   extractWakeWordRequest,
+  isVoiceCaptureSuppressed,
   isOwnerVoiceCommand,
   routeVoiceResponse,
   shouldLeaveForBotVoiceState,
@@ -143,13 +144,24 @@ describe("Discord voice utterance policy", () => {
     const speaker = new ActiveVoiceSpeaker();
     expect(speaker.acquire("100")).toBe(true);
     expect(speaker.acquire("101")).toBe(false);
+    expect(speaker.shouldNotifyOverlap()).toBe(true);
+    expect(speaker.shouldNotifyOverlap()).toBe(false);
     expect(speaker.current()).toBe("100");
     speaker.release("101");
     expect(speaker.current()).toBe("100");
+    expect(speaker.shouldNotifyOverlap()).toBe(false);
     speaker.release("100");
     expect(speaker.acquire("101")).toBe(true);
+    expect(speaker.shouldNotifyOverlap()).toBe(true);
     speaker.clear();
     expect(speaker.current()).toBeNull();
+    expect(speaker.shouldNotifyOverlap()).toBe(false);
+  });
+
+  it("suppresses receiver starts during the post-playback echo guard", () => {
+    expect(isVoiceCaptureSuppressed(10_000, 12_000)).toBe(true);
+    expect(isVoiceCaptureSuppressed(12_000, 12_000)).toBe(false);
+    expect(isVoiceCaptureSuppressed(13_000, 12_000)).toBe(false);
   });
 
   it("maps owner voice to tools and other speakers to chat only", () => {

@@ -54,7 +54,7 @@ const MAX_PCM_BYTES =
 const MIN_PCM_BYTES = INPUT_SAMPLE_RATE * INPUT_CHANNELS * 2 / 4;
 const SPEAKER_SILENCE_MS = 900;
 const VOICE_RESPONSE_CHARACTER_LIMIT = 420;
-const OVERLAP_NOTICE_COOLDOWN_MS = 5_000;
+const VOICE_ECHO_GUARD_MS = 2_000;
 
 const VOICE_COMMAND = new SlashCommandBuilder()
   .setName("spectre")
@@ -189,15 +189,26 @@ export class VoiceConversationSessions {
 
 export class ActiveVoiceSpeaker {
   private userId: string | null = null;
+  private overlapNotified = false;
 
   acquire(userId: string): boolean {
     if (this.userId !== null) return false;
     this.userId = userId;
+    this.overlapNotified = false;
+    return true;
+  }
+
+  shouldNotifyOverlap(): boolean {
+    if (this.userId === null || this.overlapNotified) return false;
+    this.overlapNotified = true;
     return true;
   }
 
   release(userId: string): void {
-    if (this.userId === userId) this.userId = null;
+    if (this.userId === userId) {
+      this.userId = null;
+      this.overlapNotified = false;
+    }
   }
 
   current(): string | null {
@@ -206,7 +217,15 @@ export class ActiveVoiceSpeaker {
 
   clear(): void {
     this.userId = null;
+    this.overlapNotified = false;
   }
+}
+
+export function isVoiceCaptureSuppressed(
+  now: number,
+  suppressedUntil: number,
+): boolean {
+  return now < suppressedUntil;
 }
 
 export function shouldLeaveForChannelDeletion(input: {
@@ -376,7 +395,8 @@ export class DiscordVoiceController {
   private voiceChannelId: string | null = null;
   private linkedTextChannelId: string | null = null;
   private abortController: AbortController | null = null;
-  private overlapNoticeAt = 0;
+  private readonly pendingSpeakerStarts = new Set<string>();
+  private receiveSuppressedUntil = 0;
   private readonly rateLimiter: DiscordRateLimiter;
   private started = false;
 
@@ -631,11 +651,25 @@ export class DiscordVoiceController {
     const voiceChannelId = this.voiceChannelId;
     const linkedTextChannelId = this.linkedTextChannelId;
     if (!connection || !voiceChannelId || !linkedTextChannelId) return;
-    const user = await this.options.client.users.fetch(userId);
+    if (
+      isVoiceCaptureSuppressed(Date.now(), this.receiveSuppressedUntil)
+      || this.pendingSpeakerStarts.has(userId)
+    ) {
+      return;
+    }
+    this.pendingSpeakerStarts.add(userId);
+    let user;
+    try {
+      user = await this.options.client.users.fetch(userId);
+    } finally {
+      this.pendingSpeakerStarts.delete(userId);
+    }
     if (user.bot) return;
     if (!this.speaker.acquire(userId)) {
-      if (Date.now() - this.overlapNoticeAt >= OVERLAP_NOTICE_COOLDOWN_MS) {
-        this.overlapNoticeAt = Date.now();
+      if (
+        this.player.state.status === AudioPlayerStatus.Idle
+        && this.speaker.shouldNotifyOverlap()
+      ) {
         await this.sendLinkedText(
           "Spectre is already processing another speaker; overlapping audio was ignored.",
         );
@@ -793,12 +827,16 @@ export class DiscordVoiceController {
     if (routed.textDetail) {
       await this.sendDetailedText(`Response for <@${userId}>`, routed.textDetail);
     }
-    await this.speak(routed.spoken, signal).catch(async (error) => {
-      void error;
-      await this.sendLinkedText(
-        "I couldn't play the voice response safely. The text result remains in the linked channel.",
-      );
-    });
+    try {
+      await this.speak(routed.spoken, signal).catch(async (error) => {
+        void error;
+        await this.sendLinkedText(
+          "I couldn't play the voice response safely. The text result remains in the linked channel.",
+        );
+      });
+    } finally {
+      this.receiveSuppressedUntil = Date.now() + VOICE_ECHO_GUARD_MS;
+    }
     await this.options.memory.remember(scope, prompt, response);
   }
 
@@ -907,6 +945,8 @@ export class DiscordVoiceController {
     this.connection = null;
     this.voiceChannelId = null;
     this.linkedTextChannelId = null;
+    this.pendingSpeakerStarts.clear();
+    this.receiveSuppressedUntil = 0;
     this.speaker.clear();
     this.sessions.clear();
   }
