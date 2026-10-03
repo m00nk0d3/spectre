@@ -27,6 +27,33 @@ function runner(
 }
 
 describe("GitHubService", () => {
+  it("searches the active user's assigned issues across owned repositories", async () => {
+    const run = runner((args) => {
+      expect(args).toEqual([
+        "search",
+        "issues",
+        "--owner",
+        "m00nk0d3",
+        "--assignee",
+        "m00nk0d3",
+        "--state",
+        "open",
+        "--limit",
+        "25",
+        "--json",
+        "number,title,state,author,assignees,labels,repository,updatedAt,url",
+      ]);
+      return '[{"number":42,"title":"Memory"}]';
+    });
+    const service = new GitHubService({ runner: run });
+
+    await expect(service.read(
+      "search_issues",
+      undefined,
+      { state: "open", limit: 25 },
+    )).resolves.toEqual([{ number: 42, title: "Memory" }]);
+  });
+
   it("reads owned repository issues without confirmation", async () => {
     const run = runner((args) => {
       expect(args).toEqual([

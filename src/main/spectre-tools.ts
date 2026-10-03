@@ -237,19 +237,19 @@ export const SPECTRE_TOOLS: SpectreToolDefinition[] = [
     function: {
       name: "github_read",
       description:
-        "Read GitHub data for repositories owned by the active personal account. Supports repositories, issues, pull requests, branches, releases, and Actions runs.",
+        "Read GitHub data for repositories owned by the active personal account. Supports repositories, assigned issues across repositories, repository issues, pull requests, branches, releases, and Actions runs.",
       parameters: {
         type: "object",
         properties: {
           operation: {
             type: "string",
             description:
-              "One of: list_repositories, get_repository, list_issues, get_issue, list_pull_requests, get_pull_request, list_branches, list_releases, list_workflow_runs.",
+              "One of: list_repositories, search_issues, get_repository, list_issues, get_issue, list_pull_requests, get_pull_request, list_branches, list_releases, list_workflow_runs.",
           },
           repository: {
             type: "string",
             description:
-              "Owned repository as owner/name or a short name such as spectre. Omit only for list_repositories.",
+              "Owned repository as owner/name or a short name such as spectre. Omit for list_repositories and search_issues.",
           },
           payload: {
             type: "string",
@@ -435,6 +435,7 @@ function round(value: number, precision = 2): number {
 
 const GITHUB_READ_OPERATIONS = new Set<GitHubReadOperation>([
   "list_repositories",
+  "search_issues",
   "get_repository",
   "list_issues",
   "get_issue",

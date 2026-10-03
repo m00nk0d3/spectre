@@ -99,10 +99,13 @@ describe("Issue #15: Persona and language constraints", () => {
     expect(content).toMatch(/explicitly asks to be roasted/i);
     expect(content).toMatch(/immediately give one or two concise playful roasts/i);
     expect(content).toMatch(/Never say the roast engine is idling/i);
+    expect(content).toMatch(/Never explain persona policy/i);
+    expect(content).toMatch(/classify the conversation as low-stakes/i);
     expect(content).toMatch(/Do not invent a mistake or personal detail/i);
     expect(content).toMatch(/Profanity is allowed but should remain occasional/i);
     expect(content).toMatch(/instead of replying like a therapist/i);
     expect(content).toMatch(/hard limit of two short sentences/i);
+    expect(content).toMatch(/Never repeat a recent response verbatim/i);
     expect(content).toMatch(/drop the jokes when they would make the moment worse/i);
     expect(content).toContain("Yeah, man. What are we getting ourselves into?");
     expect(content).toMatch(/"man", "dude", or "bro"/i);

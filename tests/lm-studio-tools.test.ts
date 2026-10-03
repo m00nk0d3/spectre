@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  isRepeatedAssistantResponse,
   isUsableLongFormPresentation,
   requiredMutationToolNames,
   routeDirectToolCalls,
@@ -284,6 +285,22 @@ describe("LM Studio tool calling", () => {
         arguments: JSON.stringify({
           operation: "list_repositories",
           payload: '{"limit":100}',
+        }),
+      },
+    }]);
+  });
+
+  it("routes the user's assigned GitHub issues without inventing a repository", () => {
+    expect(
+      routeDirectToolCalls(
+        "Show me my issues on GitHub. Issues, not repos.",
+      ),
+    ).toMatchObject([{
+      function: {
+        name: "github_read",
+        arguments: JSON.stringify({
+          operation: "search_issues",
+          payload: '{"state":"open","limit":100}',
         }),
       },
     }]);
@@ -676,16 +693,15 @@ describe("LM Studio tool calling", () => {
         },
       ]));
 
-    const consume = async () => {
-      for await (
-        const token of streamLMStudioResponse("Answer conversationally.")
-      ) {
-        void token;
-      }
-    };
+    let result = "";
+    for await (
+      const token of streamLMStudioResponse("Answer conversationally.")
+    ) {
+      result += token;
+    }
 
-    await expect(consume()).rejects.toThrow(
-      "LM Studio returned an unexecuted tool call",
+    expect(result).toBe(
+      "I couldn't complete that request because the tool plan did not resolve safely.",
     );
   });
 
@@ -1084,6 +1100,16 @@ describe("LM Studio tool calling", () => {
 
     expect(result).toBe("I could not resolve the requested project.");
     expect(listProjects).toHaveBeenCalledOnce();
+    const adaptedSelection = JSON.parse(
+      String(fetchMock.mock.calls[3][1]?.body),
+    ) as {
+      tools: Array<{ function: { name: string } }>;
+    };
+    expect(
+      adaptedSelection.tools.some(
+        (tool) => tool.function.name === "list_projects",
+      ),
+    ).toBe(false);
     const thirdPlanningRequest = JSON.parse(
       String(fetchMock.mock.calls[3][1]?.body),
     ) as {
@@ -1318,6 +1344,7 @@ describe("LM Studio tool calling", () => {
     expect(request.messages[0]).toMatchObject({
       role: "system",
     });
+
     expect(request.messages[0].content).toContain(
       "Local conversation memory: User previously said Neovim.",
     );
@@ -1329,6 +1356,32 @@ describe("LM Studio tool calling", () => {
       role: "user",
       content: "What editor do I use?",
     });
+  });
+
+  it("replaces a repeated greeting with a fresh short response", async () => {
+    const repeated =
+      "Hey! What's up? You just said hello, which is nice and low-stakes, but I'm ready to dive into whatever you're actually after. Talk to me.";
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(noToolSelectionResponse())
+      .mockResolvedValueOnce(streamingResponse([
+        { choices: [{ delta: { content: repeated } }] },
+      ]));
+    const memoryContext = [
+      "Discord conversation memory follows.",
+      "[2026-10-03T23:06:00.000Z] User: hey",
+      `Assistant: ${repeated}`,
+    ].join("\n");
+
+    let result = "";
+    for await (const token of streamLMStudioResponse("hey", {
+      model: "test-model",
+      memoryContext,
+    })) {
+      result += token;
+    }
+
+    expect(isRepeatedAssistantResponse(repeated, memoryContext)).toBe(true);
+    expect(result).toBe("Hey, man. What's up?");
   });
 
   it("answers normally when the agent decides no tool is needed", async () => {

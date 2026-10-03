@@ -93,6 +93,7 @@ type ChatMessage =
 const MAX_TOOL_CALLS_PER_ROUND = 4;
 const MAX_TOOL_ROUNDS = 12;
 const MAX_TOTAL_TOOL_CALLS = 32;
+const MAX_FAILURES_PER_TOOL = 2;
 const MAX_TOOL_SELECTION_TOKENS = 768;
 const MAX_MUTATION_RECOVERY_TOKENS = 2_048;
 const MAX_RESPONSE_TOKENS = 256;
@@ -100,6 +101,7 @@ const MAX_RESPONSE_TOKENS = 256;
 interface ToolExecutionMetadata {
   webAttempted: boolean;
   readableWebSources: string[];
+  failedToolNames: string[];
   mutationAttempted: boolean;
   mutationSucceeded: boolean;
   mutationCancelled: boolean;
@@ -132,6 +134,8 @@ const GITHUB_REPOSITORY_LIST_INTENT =
   /\b(?:list|show|display|look at|give me|what are|which are)\b[\s\S]*\b(?:(?:my\s+)?github\s+(?:repositories|repos)|(?:my\s+)?(?:repositories|repos)\s+(?:on|from|in)\s+github)\b/i;
 const GITHUB_ISSUE_LIST_INTENT =
   /\b(?:list|show|display|look at|see|find|what are|which are)\b[\s\S]*\bissues\b/i;
+const GITHUB_MY_ISSUES_INTENT =
+  /\bmy\s+(?:open\s+)?(?:github\s+)?issues\b|\bissues\b[\s\S]*\bassigned to me\b/i;
 const SCREEN_CORRECTION_INTENT =
   /\b(?:you didn'?t|did not|still didn'?t|not)\b[\s\S]*\b(?:put|show|display|open)\b[\s\S]*\b(?:it|that|them|those|the details?|the list)?\s*(?:on|in)\s+(?:the\s+)?screen\b|\bput (?:it|that|them|those|the details?|the list) on (?:the )?screen\b/i;
 const TOOL_OUTPUT_CORRECTION_INTENT =
@@ -141,6 +145,15 @@ const GITHUB_REPOSITORY_CLONE_INTENT =
 const WEB_RESEARCH_INTENT =
   /\b(?:web research|research\b[\s\S]*\bonline|search (?:the )?(?:web|internet|online)|look (?:this|that|it) up online|find (?:this|that|it) online|latest (?:news|release|version|information)|current (?:news|release|version|information))\b/i;
 const PUBLIC_URL_PATTERN = /https?:\/\/[^\s<>"']+/i;
+const SIMPLE_GREETING_INTENT =
+  /^\s*(?:hey|hi|hello|yo|sup|what(?:'s| is) up)[!?.\s]*$/i;
+const GREETING_RESPONSES = [
+  "Hey, man. What's up?",
+  "Yo. What are we getting into?",
+  "Hey. Talk to me.",
+  "Sup, dude. What's on your mind?",
+  "There you are. What's going on?",
+] as const;
 const ALL_TOOL_NAMES = SPECTRE_TOOLS.map((tool) => tool.function.name);
 const LONG_FORM_PRESENTATION_INSTRUCTION = [
   "The application will place your entire response in a visual presentation panel.",
@@ -205,6 +218,46 @@ function rememberedUserTurns(memoryContext?: string): string[] {
       /^\[[^\]]+\] User: (.+)$/gm,
     ),
   ].flatMap((match) => match[1]?.trim() ? [match[1].trim()] : []);
+}
+
+function normalizeResponseForComparison(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function rememberedAssistantTurns(memoryContext?: string): string[] {
+  if (!memoryContext) return [];
+  return [
+    ...memoryContext.matchAll(/^Assistant:\s*(.+)$/gm),
+  ].flatMap((match) => match[1]?.trim() ? [match[1].trim()] : []);
+}
+
+export function isRepeatedAssistantResponse(
+  response: string,
+  memoryContext?: string,
+): boolean {
+  const normalized = normalizeResponseForComparison(response);
+  return Boolean(
+    normalized
+    && rememberedAssistantTurns(memoryContext).some(
+      (prior) => normalizeResponseForComparison(prior) === normalized,
+    )
+  );
+}
+
+function freshGreetingResponse(memoryContext?: string): string {
+  const previous = new Set(
+    rememberedAssistantTurns(memoryContext).map(
+      normalizeResponseForComparison,
+    ),
+  );
+  return GREETING_RESPONSES.find(
+    (response) => !previous.has(normalizeResponseForComparison(response)),
+  ) ?? GREETING_RESPONSES[
+    rememberedAssistantTurns(memoryContext).length % GREETING_RESPONSES.length
+  ];
 }
 
 function mostRecentActionableUserTurn(memoryContext?: string): string {
@@ -359,6 +412,23 @@ export function routeDirectToolCalls(
     });
   }
   if (
+    GITHUB_ISSUE_LIST_INTENT.test(routingPrompt)
+    && GITHUB_MY_ISSUES_INTENT.test(routingPrompt)
+    && !/\b[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\b/.test(routingPrompt)
+  ) {
+    toolCalls.push({
+      id: "spectre-tool-github-my-issues",
+      type: "function",
+      function: {
+        name: "github_read",
+        arguments: JSON.stringify({
+          operation: "search_issues",
+          payload: '{"state":"open","limit":100}',
+        }),
+      },
+    });
+  }
+  if (
     contextualCorrection
     && GITHUB_ISSUE_LIST_INTENT.test(routingPrompt)
   ) {
@@ -492,6 +562,7 @@ async function appendToolResults(
   const metadata: ToolExecutionMetadata = {
     webAttempted: false,
     readableWebSources: [],
+    failedToolNames: [],
     mutationAttempted: false,
     mutationSucceeded: false,
     mutationCancelled: false,
@@ -507,6 +578,10 @@ async function appendToolResults(
     const signature =
       `${toolCall.function.name}:${toolCall.function.arguments}`;
     if (seenToolCalls?.has(signature)) {
+      metadata.failedToolNames.push(
+        toolCall.function.name,
+        toolCall.function.name,
+      );
       await onProgress?.({
         step: completedToolCalls + index + 1,
         message: "Correcting a repeated tool step",
@@ -752,11 +827,12 @@ async function appendToolResults(
             };
           }
         } else if (
-          args.operation === "list_issues"
-          && typeof args.repository === "string"
+          (args.operation === "list_issues"
+            || args.operation === "search_issues")
           && Array.isArray(githubResult)
           && (
             toolCall.id === "spectre-tool-github-issues"
+            || toolCall.id === "spectre-tool-github-my-issues"
             || toolCall.id.startsWith("spectre-text-tool-")
           )
         ) {
@@ -788,13 +864,23 @@ async function appendToolResults(
             ];
           });
           const formatted = [
-            `Issues for ${args.repository}: ${items.length}`,
+            args.operation === "search_issues"
+              ? `Open issues assigned to you: ${items.length}`
+              : `Issues for ${
+                  typeof args.repository === "string"
+                    ? args.repository
+                    : "the requested repository"
+                }: ${items.length}`,
             ...items,
           ].join("\n");
           metadata.structuredResult = {
-            title: `${args.repository} issues`,
+            title: args.operation === "search_issues"
+              ? "Your open GitHub issues"
+              : `${args.repository} issues`,
             content: formatted,
-            spokenHint: "I put the repository issues on screen.",
+            spokenHint: args.operation === "search_issues"
+              ? "I put your open GitHub issues on screen."
+              : "I put the repository issues on screen.",
             memoryText: formatted,
           };
         }
@@ -836,6 +922,7 @@ async function appendToolResults(
         metadata.mutationAttempted = true;
         metadata.mutationFailed = true;
       }
+      metadata.failedToolNames.push(toolCall.function.name);
       const message = error instanceof Error ? error.message : String(error);
       console.error(
         exposeToolErrors
@@ -1190,6 +1277,7 @@ export async function* streamLMStudioResponse(
   const toolMetadata: ToolExecutionMetadata = {
     webAttempted: false,
     readableWebSources: [],
+    failedToolNames: [],
     mutationAttempted: false,
     mutationSucceeded: false,
     mutationCancelled: false,
@@ -1226,6 +1314,7 @@ export async function* streamLMStudioResponse(
     );
   } else if (allowedToolNames.length > 0) {
     let totalToolCalls = 0;
+    const toolFailureCounts = new Map<string, number>();
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       if (round === 0 && extendedProgressRequested) {
         await config.onProgress?.({
@@ -1234,6 +1323,11 @@ export async function* streamLMStudioResponse(
         });
       }
       try {
+        const selectableToolNames = allowedToolNames.filter(
+          (toolName) =>
+            (toolFailureCounts.get(toolName) ?? 0) < MAX_FAILURES_PER_TOOL,
+        );
+        if (selectableToolNames.length === 0) break;
         toolCalls = round === 0 && requiredMutationTools.length > 0
           ? await selectTools(
               messages,
@@ -1249,7 +1343,7 @@ export async function* streamLMStudioResponse(
               endpoint,
               model,
               apiKey,
-              allowedToolNames,
+              selectableToolNames,
               config.signal,
             );
       } catch (error) {
@@ -1322,6 +1416,13 @@ export async function* streamLMStudioResponse(
         config.callerPolicy?.exposeToolErrors,
       );
       toolMetadata.webAttempted ||= roundMetadata.webAttempted;
+      toolMetadata.failedToolNames.push(...roundMetadata.failedToolNames);
+      for (const toolName of roundMetadata.failedToolNames) {
+        toolFailureCounts.set(
+          toolName,
+          (toolFailureCounts.get(toolName) ?? 0) + 1,
+        );
+      }
       toolMetadata.mutationAttempted ||= roundMetadata.mutationAttempted;
       toolMetadata.mutationSucceeded ||= roundMetadata.mutationSucceeded;
       toolMetadata.mutationCancelled ||= roundMetadata.mutationCancelled;
@@ -1491,9 +1592,15 @@ export async function* streamLMStudioResponse(
     if (done) break;
   }
   if (containsToolControlMarkup(generatedText)) {
-    throw new Error(
-      "LM Studio returned an unexecuted tool call instead of a final response",
-    );
+    yield "I couldn't complete that request because the tool plan did not resolve safely.";
+    return;
+  }
+  if (
+    generatedText
+    && SIMPLE_GREETING_INTENT.test(prompt)
+    && isRepeatedAssistantResponse(generatedText, memoryContext)
+  ) {
+    generatedText = freshGreetingResponse(memoryContext);
   }
   if (generatedText) yield generatedText;
   const missingSources = toolMetadata.readableWebSources.filter(

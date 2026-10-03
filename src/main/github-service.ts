@@ -11,6 +11,7 @@ const MAX_LIMIT = 100;
 
 export type GitHubReadOperation =
   | "list_repositories"
+  | "search_issues"
   | "get_repository"
   | "list_issues"
   | "get_issue"
@@ -262,6 +263,22 @@ export class GitHubService {
         String(boundedLimit(payload)),
         "--json",
         "nameWithOwner,description,isPrivate,isArchived,defaultBranchRef,url,updatedAt",
+      ]));
+    }
+    if (operation === "search_issues") {
+      return parseOutput(await this.runner("gh", [
+        "search",
+        "issues",
+        "--owner",
+        login,
+        "--assignee",
+        stringValue(payload, "assignee") ?? login,
+        "--state",
+        stringValue(payload, "state") ?? "open",
+        "--limit",
+        String(boundedLimit(payload)),
+        "--json",
+        "number,title,state,author,assignees,labels,repository,updatedAt,url",
       ]));
     }
     const repo = this.normalizeOwnedRepository(repository, login);
