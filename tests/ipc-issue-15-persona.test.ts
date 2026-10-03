@@ -92,6 +92,13 @@ describe("Issue #15: Persona and language constraints", () => {
     expect(content).toMatch(/Do not default to a flat neutral response/i);
     expect(content).toMatch(/Crack short jokes/i);
     expect(content).toMatch(/brief friendly roast/i);
+    expect(content).toMatch(/Actively notice roast opportunities/i);
+    expect(content).toMatch(/instead of waiting for the user to request one/i);
+    expect(content).toMatch(/repeated pivots, overengineering/i);
+    expect(content).toMatch(/one spontaneous affectionate jab/i);
+    expect(content).toMatch(/explicitly asks to be roasted/i);
+    expect(content).toMatch(/immediately give one or two concise playful roasts/i);
+    expect(content).toMatch(/Never say the roast engine is idling/i);
     expect(content).toMatch(/Do not invent a mistake or personal detail/i);
     expect(content).toMatch(/Profanity is allowed but should remain occasional/i);
     expect(content).toMatch(/instead of replying like a therapist/i);
