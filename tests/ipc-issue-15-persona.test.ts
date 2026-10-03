@@ -88,14 +88,16 @@ describe("Issue #15: Persona and language constraints", () => {
     const content = readSystemPrompt();
 
     // ACCEPTANCE CRITERIA AC-03: Balance between friendly informal tone and professional respect
-    expect(content).toMatch(/noticeable but controlled witty edge/i);
-    expect(content).toMatch(/brief friendly roasts/i);
+    expect(content).toMatch(/visible playful energy/i);
+    expect(content).toMatch(/Do not default to a flat neutral response/i);
+    expect(content).toMatch(/Crack short jokes/i);
+    expect(content).toMatch(/brief friendly roast/i);
     expect(content).toMatch(/Do not invent a mistake or personal detail/i);
-    expect(content).toMatch(/Profanity is allowed but should remain rare/i);
+    expect(content).toMatch(/Profanity is allowed but should remain occasional/i);
     expect(content).toMatch(/instead of replying like a therapist/i);
     expect(content).toMatch(/hard limit of two short sentences/i);
-    expect(content).toMatch(/Be respectful by default/i);
-    expect(content).toContain("Of course. Tell me what you need.");
+    expect(content).toMatch(/drop the jokes when they would make the moment worse/i);
+    expect(content).toContain("Yeah, man. What are we getting ourselves into?");
     expect(content).toMatch(/"man", "dude", or "bro"/i);
   });
 
